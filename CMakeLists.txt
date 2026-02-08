@@ -385,127 +385,231 @@ set(SUPPORT_MODULES_CONFIG_trace "-DTRACE")
 # A set of llvm modules that contain all the known helpers.
 set(HELPER_MODULE_LIST, "")
 
-foreach(
-  ARCH
-  aarch64
-  arm
-  mips
-  mipsel
-  x86_64
-  i386
-  s390x)
-  set(OUTPUT "early-linked-${ARCH}.ll")
-  add_custom_command(
-    OUTPUT "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}"
-    DEPENDS "${CMAKE_SOURCE_DIR}/share/revng/early-linked.c"
-    COMMAND
-      ${TARGET_CLANG} ARGS "${CMAKE_SOURCE_DIR}/share/revng/early-linked.c" -o
-      "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}" -S -emit-llvm -g
-      -DTARGET_${ARCH} -I"${CMAKE_SOURCE_DIR}/share/revng"
-      -I"${CMAKE_CURRENT_SOURCE_DIR}/include")
-  add_custom_target("early-linked-module-${OUTPUT}" ALL
-                    DEPENDS "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}")
-  add_dependencies(revng-all-binaries "early-linked-module-${OUTPUT}")
-  list(APPEND HELPER_MODULE_LIST "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}")
+set(REVNG_RUNTIME_ARCHES aarch64 arm mips mipsel x86_64 i386 s390x)
 
-  # Enable the support for C exceptions to avoid optimizations that break
-  # exception support when linking a module with isolated functions
-  foreach(CONFIG ${SUPPORT_MODULES_CONFIGS})
-    set(OUTPUT "support-${ARCH}-${CONFIG}.ll")
+if(REVNG_USE_PREBUILT_RUNTIME_RESOURCES)
+  if("${REVNG_RUNTIME_PREFIX}" STREQUAL "")
+    message(FATAL_ERROR
+            "REVNG_USE_PREBUILT_RUNTIME_RESOURCES is enabled, but REVNG_RUNTIME_PREFIX is empty."
+    )
+  endif()
+
+  set(PREBUILT_SHARE_REVNG "${REVNG_RUNTIME_PREFIX}/share/revng")
+  set(PREBUILT_OUTPUTS)
+
+  foreach(ARCH IN LISTS REVNG_RUNTIME_ARCHES)
+    foreach(FILE
+            "early-linked-${ARCH}.ll"
+            "support-${ARCH}-normal.ll"
+            "support-${ARCH}-trace.ll")
+      set(SRC "${PREBUILT_SHARE_REVNG}/${FILE}")
+      if(NOT EXISTS "${SRC}")
+        message(FATAL_ERROR
+                "Missing prebuilt runtime resource: ${SRC}. "
+                "Set REVNG_RUNTIME_PREFIX to an extracted official revng prefix (e.g. docker /revng/root)."
+        )
+      endif()
+
+      set(DST "${CMAKE_BINARY_DIR}/share/revng/${FILE}")
+      add_custom_command(
+        OUTPUT "${DST}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                "${CMAKE_BINARY_DIR}/share/revng"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SRC}" "${DST}"
+        DEPENDS "${SRC}" copy_share)
+      list(APPEND PREBUILT_OUTPUTS "${DST}")
+    endforeach()
+
+    # Map docker/distribution helper module names to the names expected by the
+    # current sources.
+    set(SRC_FULL "${PREBUILT_SHARE_REVNG}/libtcg-helpers-annotated-${ARCH}.bc")
+    set(SRC_SLIM
+        "${PREBUILT_SHARE_REVNG}/libtcg-helpers-annotated-slim-${ARCH}.bc")
+    if(NOT EXISTS "${SRC_FULL}")
+      message(FATAL_ERROR "Missing prebuilt helper module: ${SRC_FULL}")
+    endif()
+    if(NOT EXISTS "${SRC_SLIM}")
+      message(FATAL_ERROR "Missing prebuilt helper module: ${SRC_SLIM}")
+    endif()
+
+    set(DST_FULL
+        "${CMAKE_BINARY_DIR}/share/revng/libtcg-helpers-full-${ARCH}.bc")
+    set(DST_TO_INLINE
+        "${CMAKE_BINARY_DIR}/share/revng/libtcg-helpers-to-inline-${ARCH}.bc")
+    set(DST_DECL_ONLY
+        "${CMAKE_BINARY_DIR}/share/revng/libtcg-helpers-declarations-only-${ARCH}.bc"
+    )
+
     add_custom_command(
-      OUTPUT "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}"
-      DEPENDS "${CMAKE_SOURCE_DIR}/share/revng/support.c"
-      COMMAND
-        ${TARGET_CLANG} ARGS "${CMAKE_SOURCE_DIR}/share/revng/support.c" -O2
-        -fexceptions -o "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}" -S
-        -emit-llvm -g -DTARGET_${ARCH} -I"${CMAKE_SOURCE_DIR}/share/revng"
-        -I"${CMAKE_CURRENT_SOURCE_DIR}/include"
-        ${SUPPORT_MODULES_CONFIG_${CONFIG}})
-    add_custom_target("support-module-${OUTPUT}" ALL
-                      DEPENDS "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}")
-    add_dependencies(revng-all-binaries "support-module-${OUTPUT}")
-    list(APPEND HELPER_MODULE_LIST "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}")
+      OUTPUT "${DST_FULL}"
+      COMMAND ${CMAKE_COMMAND} -E make_directory
+              "${CMAKE_BINARY_DIR}/share/revng"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SRC_FULL}" "${DST_FULL}"
+      DEPENDS "${SRC_FULL}" copy_share)
+    add_custom_command(
+      OUTPUT "${DST_TO_INLINE}"
+      COMMAND ${CMAKE_COMMAND} -E make_directory
+              "${CMAKE_BINARY_DIR}/share/revng"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SRC_SLIM}"
+              "${DST_TO_INLINE}"
+      DEPENDS "${SRC_SLIM}" copy_share)
+    add_custom_command(
+      OUTPUT "${DST_DECL_ONLY}"
+      COMMAND ${CMAKE_COMMAND} -E make_directory
+              "${CMAKE_BINARY_DIR}/share/revng"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SRC_SLIM}"
+              "${DST_DECL_ONLY}"
+      DEPENDS "${SRC_SLIM}" copy_share)
+
+    list(APPEND PREBUILT_OUTPUTS "${DST_FULL}" "${DST_TO_INLINE}"
+         "${DST_DECL_ONLY}")
   endforeach()
 
-  # Annotate `libtcg-helpers-*.bc`. This loads the `libtcg-helpers` bitcode
-  # files and runs analyses that determine which CSVs are accessed by each
-  # helper function.
-  set(LIBTCG_HELPERS
-      "${CMAKE_INSTALL_PREFIX}/share/libtcg/libtcg-helpers-${ARCH}.bc")
-  set(LIBTCG_HELPERS_FULL
-      "${CMAKE_BINARY_DIR}/share/revng/libtcg-helpers-full-${ARCH}.bc")
-  add_custom_command(
-    OUTPUT "${LIBTCG_HELPERS_FULL}"
-    DEPENDS "${LIBTCG_HELPERS}" revng-all-binaries
-    COMMAND
-      ./bin/revng opt -sroa -instsimplify -cpu-loop-exit
-      -analyze-helper-arguments -fix-helpers
-      -fix-helpers-architecture="${ARCH}" "${LIBTCG_HELPERS}" -o
-      "${LIBTCG_HELPERS_FULL}")
-  add_custom_target("annotated-libtcg-helpers-${ARCH}" ALL
-                    DEPENDS "${LIBTCG_HELPERS_FULL}")
+  if(REVNG_COPY_EXTERNAL_RUNTIME_TO_BUILD_TREE)
+    set(PREBUILT_LIB_DIR "")
+    if(EXISTS "${REVNG_RUNTIME_PREFIX}/lib64")
+      set(PREBUILT_LIB_DIR "${REVNG_RUNTIME_PREFIX}/lib64")
+    elseif(EXISTS "${REVNG_RUNTIME_PREFIX}/lib")
+      set(PREBUILT_LIB_DIR "${REVNG_RUNTIME_PREFIX}/lib")
+    endif()
 
-  function(process_helper_module)
-    set(options)
-    set(oneValueArgs NAME)
-    set(multiValueArgs PASSES)
-    cmake_parse_arguments(OPT "${options}" "${oneValueArgs}"
-                          "${multiValueArgs}" ${ARGN})
+    if("${PREBUILT_LIB_DIR}" STREQUAL "")
+      message(FATAL_ERROR
+              "REVNG_COPY_EXTERNAL_RUNTIME_TO_BUILD_TREE is enabled, but neither ${REVNG_RUNTIME_PREFIX}/lib64 nor ${REVNG_RUNTIME_PREFIX}/lib exists."
+      )
+    endif()
 
-    set(PROCESS_HELPER_MODULE_OUTPUT
-        "${CMAKE_BINARY_DIR}/share/revng/libtcg-helpers-${OPT_NAME}-${ARCH}.bc")
-    list(TRANSFORM OPT_PASSES PREPEND -)
+    file(GLOB PREBUILT_LIBTCG_LIBS "${PREBUILT_LIB_DIR}/libtcg-*.so*")
+    if("${PREBUILT_LIBTCG_LIBS}" STREQUAL "")
+      message(FATAL_ERROR
+              "REVNG_COPY_EXTERNAL_RUNTIME_TO_BUILD_TREE is enabled, but no libtcg-*.so was found under ${PREBUILT_LIB_DIR}."
+      )
+    endif()
+
+    foreach(LIB IN LISTS PREBUILT_LIBTCG_LIBS)
+      get_filename_component(LIB_NAME "${LIB}" NAME)
+      set(DST "${CMAKE_BINARY_DIR}/lib/${LIB_NAME}")
+      add_custom_command(
+        OUTPUT "${DST}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/lib"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${LIB}" "${DST}"
+        DEPENDS "${LIB}")
+      list(APPEND PREBUILT_OUTPUTS "${DST}")
+    endforeach()
+  endif()
+
+  add_custom_target(revng-runtime-resources ALL DEPENDS ${PREBUILT_OUTPUTS})
+  add_dependencies(revng-all-binaries revng-runtime-resources)
+else()
+  foreach(
+    ARCH
+    aarch64
+    arm
+    mips
+    mipsel
+    x86_64
+    i386
+    s390x)
+    set(OUTPUT "early-linked-${ARCH}.ll")
     add_custom_command(
-      OUTPUT "${PROCESS_HELPER_MODULE_OUTPUT}"
-      DEPENDS "${LIBTCG_HELPERS_FULL}" revng-all-binaries
-      COMMAND ./bin/revng opt ${OPT_PASSES} "${LIBTCG_HELPERS_FULL}" -o
-              "${PROCESS_HELPER_MODULE_OUTPUT}")
-    add_custom_target("annotated-libtcg-helpers-${OPT_NAME}-${ARCH}" ALL
-                      DEPENDS "${PROCESS_HELPER_MODULE_OUTPUT}")
-    list(APPEND HELPER_MODULE_LIST "${PROCESS_HELPER_MODULE_OUTPUT}")
-    set(HELPER_MODULE_LIST
-        "${HELPER_MODULE_LIST}"
-        PARENT_SCOPE)
-  endfunction()
+      OUTPUT "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}"
+      DEPENDS "${CMAKE_SOURCE_DIR}/share/revng/early-linked.c"
+      COMMAND
+        ${TARGET_CLANG} ARGS "${CMAKE_SOURCE_DIR}/share/revng/early-linked.c" -o
+        "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}" -S -emit-llvm -g
+        -DTARGET_${ARCH} -I"${CMAKE_SOURCE_DIR}/share/revng"
+        -I"${CMAKE_CURRENT_SOURCE_DIR}/include")
+    add_custom_target("early-linked-module-${OUTPUT}" ALL
+                      DEPENDS "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}")
+    add_dependencies(revng-all-binaries "early-linked-module-${OUTPUT}")
+    list(APPEND HELPER_MODULE_LIST "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}")
 
-  # Produce to-inline version of helpers. In this version the bitcode file only
-  # contains helper functions that are in the `revng_inline` section and the
-  # CSVs that are used by them. This is used by `inline-helpers` to allow
-  # inlining the body of the `revng_inline` function into the isolated
-  # functions' bodies.
-  process_helper_module(
-    NAME
-    to-inline
-    PASSES
-    slim-down-helpers-module
-    sroa
-    instsimplify
-    simplifycfg
-    strip-dead-debug-info)
+    # Enable the support for C exceptions to avoid optimizations that break
+    # exception support when linking a module with isolated functions
+    foreach(CONFIG ${SUPPORT_MODULES_CONFIGS})
+      set(OUTPUT "support-${ARCH}-${CONFIG}.ll")
+      add_custom_command(
+        OUTPUT "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/share/revng/support.c"
+        COMMAND
+          ${TARGET_CLANG} ARGS "${CMAKE_SOURCE_DIR}/share/revng/support.c" -O2
+          -fexceptions -o "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}" -S
+          -emit-llvm -g -DTARGET_${ARCH} -I"${CMAKE_SOURCE_DIR}/share/revng"
+          -I"${CMAKE_CURRENT_SOURCE_DIR}/include"
+          ${SUPPORT_MODULES_CONFIG_${CONFIG}})
+      add_custom_target("support-module-${OUTPUT}" ALL
+                        DEPENDS "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}")
+      add_dependencies(revng-all-binaries "support-module-${OUTPUT}")
+      list(APPEND HELPER_MODULE_LIST
+           "${CMAKE_BINARY_DIR}/share/revng/${OUTPUT}")
+    endforeach()
 
-  # Produce declarations-only version of helpers. In this version of the bitcode
-  # file all the helper functions have been turned into declarations and all
-  # CSVs have been dropped. This will be used in `lift` to import the helper
-  # declarations to be used in the lifting process.
-  process_helper_module(
-    NAME declarations-only PASSES helpers-module-to-declarations globaldce
-    strip-dead-debug-info)
-endforeach()
+    # Annotate `libtcg-helpers-*.bc`. This loads the `libtcg-helpers` bitcode
+    # files and runs analyses that determine which CSVs are accessed by each
+    # helper function.
+    set(LIBTCG_HELPERS
+        "${REVNG_LIBTCG_HELPERS_DIR}/libtcg-helpers-${ARCH}.bc")
+    set(LIBTCG_HELPERS_FULL
+        "${CMAKE_BINARY_DIR}/share/revng/libtcg-helpers-full-${ARCH}.bc")
+    add_custom_command(
+      OUTPUT "${LIBTCG_HELPERS_FULL}"
+      DEPENDS "${LIBTCG_HELPERS}" revng-all-binaries
+      COMMAND
+        ./bin/revng opt -sroa -instsimplify -cpu-loop-exit
+        -analyze-helper-arguments -fix-helpers
+        -fix-helpers-architecture="${ARCH}" "${LIBTCG_HELPERS}" -o
+        "${LIBTCG_HELPERS_FULL}")
+    add_custom_target("annotated-libtcg-helpers-${ARCH}" ALL
+                      DEPENDS "${LIBTCG_HELPERS_FULL}")
 
-# Produce well-known-models
-file(
-  GLOB
-  WELL_KNOWN_BINARIES
-  "${CMAKE_INSTALL_PREFIX}/share/revng/test/tests/well-known-models/*revng-qa.compiled-with-debug*"
-)
+    function(process_helper_module)
+      set(options)
+      set(oneValueArgs NAME)
+      set(multiValueArgs PASSES)
+      cmake_parse_arguments(OPT "${options}" "${oneValueArgs}"
+                            "${multiValueArgs}" ${ARGN})
 
-add_custom_target(well-known-binaries ALL)
+      set(PROCESS_HELPER_MODULE_OUTPUT
+          "${CMAKE_BINARY_DIR}/share/revng/libtcg-helpers-${OPT_NAME}-${ARCH}.bc"
+      )
+      list(TRANSFORM OPT_PASSES PREPEND -)
+      add_custom_command(
+        OUTPUT "${PROCESS_HELPER_MODULE_OUTPUT}"
+        DEPENDS "${LIBTCG_HELPERS_FULL}" revng-all-binaries
+        COMMAND ./bin/revng opt ${OPT_PASSES} "${LIBTCG_HELPERS_FULL}" -o
+                "${PROCESS_HELPER_MODULE_OUTPUT}")
+      add_custom_target("annotated-libtcg-helpers-${OPT_NAME}-${ARCH}" ALL
+                        DEPENDS "${PROCESS_HELPER_MODULE_OUTPUT}")
+      list(APPEND HELPER_MODULE_LIST "${PROCESS_HELPER_MODULE_OUTPUT}")
+      set(HELPER_MODULE_LIST
+          "${HELPER_MODULE_LIST}"
+          PARENT_SCOPE)
+    endfunction()
 
-foreach(WELL_KNOWN_BINARY IN LISTS WELL_KNOWN_BINARIES)
+    # Produce to-inline version of helpers. In this version the bitcode file
+    # only contains helper functions that are in the `revng_inline` section and
+    # the CSVs that are used by them. This is used by `inline-helpers` to allow
+    # inlining the body of the `revng_inline` function into the isolated
+    # functions' bodies.
+    process_helper_module(
+      NAME
+      to-inline
+      PASSES
+      slim-down-helpers-module
+      sroa
+      instsimplify
+      simplifycfg
+      strip-dead-debug-info)
 
-  get_filename_component(BASENAME "${WELL_KNOWN_BINARY}" NAME)
-  set(MODEL_PATH "share/revng/well-known-models/${BASENAME}.yml")
-  set(FULL_MODEL_PATH "${CMAKE_BINARY_DIR}/${MODEL_PATH}")
+    # Produce declarations-only version of helpers. In this version of the
+    # bitcode file all the helper functions have been turned into declarations
+    # and all CSVs have been dropped. This will be used in `lift` to import the
+    # helper declarations to be used in the lifting process.
+    process_helper_module(
+      NAME declarations-only PASSES helpers-module-to-declarations globaldce
+      strip-dead-debug-info)
+  endforeach()
+endif()
 
 if(REVNG_BUILD_WELL_KNOWN_BINARIES)
   # Produce well-known-models (dev/CI helper target).
@@ -685,14 +789,28 @@ endif()
 #
 # Gather helper names
 #
-add_custom_command(
-  OUTPUT "${CMAKE_BINARY_DIR}/share/revng/helper-list.csv"
-  COMMAND
-    ${CMAKE_SOURCE_DIR}/scripts/extract-helper-names.sh ${HELPER_MODULE_LIST} >
-    "${CMAKE_BINARY_DIR}/share/revng/helper-list.csv"
-  DEPENDS copy_share ${HELPER_MODULE_LIST})
-add_custom_target(helper-list ALL
-                  DEPENDS "${CMAKE_BINARY_DIR}/share/revng/helper-list.csv")
+set(HELPER_LIST_CSV "${CMAKE_BINARY_DIR}/share/revng/helper-list.csv")
+if(REVNG_USE_PREBUILT_RUNTIME_RESOURCES)
+  set(PREBUILT_HELPER_LIST "${REVNG_RUNTIME_PREFIX}/share/revng/helper-list.csv")
+  if(NOT EXISTS "${PREBUILT_HELPER_LIST}")
+    message(FATAL_ERROR "Missing prebuilt helper list: ${PREBUILT_HELPER_LIST}")
+  endif()
+
+  add_custom_command(
+    OUTPUT "${HELPER_LIST_CSV}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/share/revng"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PREBUILT_HELPER_LIST}"
+            "${HELPER_LIST_CSV}"
+    DEPENDS copy_share "${PREBUILT_HELPER_LIST}")
+else()
+  add_custom_command(
+    OUTPUT "${HELPER_LIST_CSV}"
+    COMMAND
+      ${CMAKE_SOURCE_DIR}/scripts/extract-helper-names.sh ${HELPER_MODULE_LIST} >
+      "${HELPER_LIST_CSV}"
+    DEPENDS copy_share ${HELPER_MODULE_LIST})
+endif()
+add_custom_target(helper-list ALL DEPENDS "${HELPER_LIST_CSV}")
 
 #
 # Proceed to subdirectories
