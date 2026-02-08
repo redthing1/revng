@@ -8,3 +8,15 @@ target_link_libraries(
   revngSDK
   PUBLIC revngPipeline revngPipes revngRuntimeDeps
   PRIVATE revngBackend)
+
+revng_add_library_internal(revngSDKDirect SHARED Direct.cpp)
+
+target_link_libraries(
+  revngSDKDirect
+  PUBLIC
+    revngModelBinaryImporter
+    revngLift
+    revngEarlyFunctionAnalysis
+    revngFunctionIsolation
+    revngRuntimeDeps
+    revngSupport)
