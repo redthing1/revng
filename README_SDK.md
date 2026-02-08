@@ -456,6 +456,44 @@ int main() {
 }
 ```
 
+### What `lift()` produces (root vs per-function)
+
+`revng::sdk::direct::lift()` produces a single “root” LLVM module for the whole
+binary.
+
+If you want *per-function* LLVM IR, the intended workflow is:
+
+1. lift once to an `LLVMRootContainer`
+2. select one or more model functions (by entry `MetaAddress`)
+3. run `collectCFG(...)` for those functions
+4. run `isolate(...)` to get an `LLVMFunctionContainer` with one module per
+   selected function
+
+The direct demo CLIs `sdk-cfg` and `sdk-isolate` (under `tools/sdk/`) and the
+SDK examples (under `examples/`) show this flow end-to-end.
+
+### SDK examples
+
+This fork also includes small, copy-paste friendly SDK examples under
+`examples/`. They are built when `REVNG_BUILD_EXAMPLES=ON` and are emitted
+under:
+
+- `<build>/libexec/revng/examples/`
+
+Example targets:
+
+- `sdk-direct-e2e`: direct import + lift + (optional) CFG + isolation, no YAML.
+- `sdk-custom-mmap-lift`: lift a “flat blob mapped at --base” by manually
+  constructing a `model::Binary` + `BinariesContainer`, no YAML.
+
+Build/run example:
+
+```bash
+ninja -C <build> sdk-direct-e2e
+<build>/libexec/revng/examples/sdk-direct-e2e --all-functions \
+  /path/to/binary /var/tmp/revng-sdk-direct-e2e-out
+```
+
 ### Pipeline-backed example: produce an artifact
 
 ```cpp
@@ -539,7 +577,7 @@ As an installed package:
 ```cmake
 find_package(revng CONFIG REQUIRED)
 add_executable(mytool main.cpp)
-target_link_libraries(mytool PRIVATE revngSDKDirect)
+target_link_libraries(mytool PRIVATE revng::revngSDKDirect)
 ```
 
 Note: `revngSDK` is a convenience layer. If you want to call deeper APIs
@@ -564,7 +602,32 @@ revng is modular around the pipeline system:
 - pipes and analyses register themselves into registries at startup
 - many analyses are built as plugin `.so` libraries under `lib/revng/analyses/`
 
-“Custom loader for weird memory maps/layouts” usually means:
+### Custom loaders / non-standard memory maps
+
+The lifter does not parse “ELF/PE/Mach-O” directly: it reads raw bytes through
+`RawBinaryView`, which translates `MetaAddress`es to file offsets using the
+model’s segments (`model::Segment`).
+
+So, for a custom executable format / memory map, you can bypass `importModel()`
+entirely and provide:
+
+- a `model::Binary` with:
+  - `Architecture` and a code `EntryPoint`
+  - `DefaultABI` (or a non-empty `DefaultPrototype`)
+  - exactly one `BinaryIdentifier` in `Binaries()`
+  - `Segments()` describing how virtual addresses map into that single file
+    image via `StartOffset`, `FileSize`, `VirtualSize`, and permissions
+- a `revng::pypeline::BinariesContainer` containing exactly one “file image”
+  buffer (`BinariesContainer::getFile(0)` is what lifting uses)
+
+The current direct SDK + lifter path assumes the “one file image” model; if
+your format naturally has multiple backing files or sparse ranges, pack them
+into one synthetic image and map each segment to the corresponding offsets.
+
+See `examples/sdk_custom_mmap_lift.cpp` for a minimal “flat blob mapped at
+`--base`” implementation.
+
+“Custom loader for weird memory maps/layouts” inside the pipeline usually means:
 
 - construct/import a `model::Binary` with the segments/functions you want, or
 - add a new import/loader analysis/pipe that constructs the model the way you
