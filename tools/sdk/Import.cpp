@@ -12,6 +12,7 @@
 #include "revng/Storage/CLPathOpt.h"
 #include "revng/Support/Error.h"
 #include "revng/Support/InitRevng.h"
+#include "revng/Support/ResourceFinder.h"
 
 namespace cl = llvm::cl;
 
@@ -59,6 +60,14 @@ static cl::opt<bool>
                         cl::init(false),
                         cl::cat(SDKImportCategory));
 
+static cl::list<std::string>
+  ResourceRoots("resource-root",
+                cl::desc("Extra resource roots (prefixes) to search for "
+                         "share/revng and other runtime resources. "
+                         "May be repeated."),
+                cl::ZeroOrMore,
+                cl::cat(SDKImportCategory));
+
 static revng::OutputPathOpt Output("o",
                                    cl::desc("Output model YAML path"),
                                    cl::cat(SDKImportCategory));
@@ -77,8 +86,16 @@ static ImporterOptions importerOptionsFromFlags() {
                           .AdditionalDebugInfoPaths = ImportDebugInfo };
 }
 
+static void applyResourceRoots() {
+  // addResourceRoot prepends, so add in reverse to preserve user order.
+  std::vector<std::string> Roots(ResourceRoots.begin(), ResourceRoots.end());
+  for (auto It = Roots.rbegin(); It != Roots.rend(); ++It)
+    revng::addResourceRoot(*It);
+}
+
 int main(int argc, char *argv[]) {
   revng::InitRevng X(argc, argv, "", { &SDKImportCategory });
+  applyResourceRoots();
 
   auto MaybeOutput = AbortOnError(Output.get());
   if (not MaybeOutput.has_value())
@@ -95,4 +112,3 @@ int main(int argc, char *argv[]) {
 
   return EXIT_SUCCESS;
 }
-
