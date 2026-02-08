@@ -81,7 +81,14 @@ std::optional<CastToEmit> MakeModelCastPass::computeCast(Use &Operand) const {
     const model::UpcastableType &ExpectedType = ModelTypes.back();
     revng_assert(ExpectedType->verify());
 
-    const model::Type &OperandType = *TypeMap.at(Operand.get());
+    auto It = TypeMap.find(Operand.get());
+    if (It == TypeMap.end()) {
+      // Some IR values do not have a corresponding model type (or the model
+      // typing pass failed to infer one). In that case we cannot reliably emit
+      // a ModelCast, so just skip.
+      return std::nullopt;
+    }
+    const model::Type &OperandType = *It->second;
 
     revng_log(Log, "ExpectedType: " << ExpectedType->toString());
     revng_log(Log, "OperandType: " << OperandType.toString());
@@ -213,7 +220,10 @@ void MakeModelCastPass::makeModelCast(const CastToEmit &ToEmit,
   const auto &[OperandUse, TargetType] = ToEmit;
 
   Value *Operand = OperandUse.get();
-  const model::Type &OperandModelType = *TypeMap.at(Operand);
+  auto It = TypeMap.find(Operand);
+  if (It == TypeMap.end())
+    return;
+  const model::Type &OperandModelType = *It->second;
 
   auto *I = cast<Instruction>(OperandUse.getUser());
 

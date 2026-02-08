@@ -306,7 +306,10 @@ ImplicitModelCastPass::getOperandsToPromote(llvm::Instruction *I,
     auto *CastedValue = CallToModelCast->getArgOperand(1);
     // Expected Type for the casted operand is the type of the cast, since the
     // MakeModelCast already made the cast.
-    const model::Type &ExpectedType = *TypeMap.at(CallToModelCast);
+    auto ExpectedIt = TypeMap.find(CallToModelCast);
+    if (ExpectedIt == TypeMap.end())
+      continue;
+    const model::Type &ExpectedType = *ExpectedIt->second;
 
     // Check if shift count < width of type.
     if (isShiftLikeInstruction(I) and Op.getOperandNo() == 0
@@ -319,7 +322,10 @@ ImplicitModelCastPass::getOperandsToPromote(llvm::Instruction *I,
       continue;
 
     auto PromotedTypeForCastedValue = PromotedTypesForInstruction[CastedValue];
-    const model::Type &CastedValueType = *TypeMap.at(CastedValue);
+    auto CastedValueIt = TypeMap.find(CastedValue);
+    if (CastedValueIt == TypeMap.end())
+      continue;
+    const model::Type &CastedValueType = *CastedValueIt->second;
     // If type of the value being casted or integer promoted type are implicit
     // casts, we can avoid the cast itself.
     bool IsImplicit = isImplicitCast(*PromotedTypeForCastedValue,
@@ -399,12 +405,21 @@ bool IMCP::collectTypeInfoForTypePromotion(llvm::Instruction *I,
       // already "casted" by the MakeModelCast Pass.
       llvm::CallInst *CallToModelCast = cast<llvm::CallInst>(Op.get());
       llvm::Value *CastedValue = CallToModelCast->getArgOperand(1);
-      OperandType = TypeMap.at(CastedValue).get();
+      auto CastedValueIt = TypeMap.find(CastedValue);
+      if (CastedValueIt == TypeMap.end())
+        return;
+      OperandType = CastedValueIt->second.get();
       ValueToPromoteTypeFor = CastedValue;
-      ExpectedType = TypeMap.at(Op.get());
+      auto ExpectedIt = TypeMap.find(Op.get());
+      if (ExpectedIt == TypeMap.end())
+        return;
+      ExpectedType = ExpectedIt->second;
     } else {
       // If it is not a ModelCast, promote the type for the llvm::Value itself.
-      OperandType = TypeMap.at(Op.get()).get();
+      auto OperandIt = TypeMap.find(Op.get());
+      if (OperandIt == TypeMap.end())
+        return;
+      OperandType = OperandIt->second.get();
       ValueToPromoteTypeFor = Op.get();
       auto ModelTypes = getExpectedModelType(&Op, Model);
       if (ModelTypes.size() != 1)
