@@ -5,7 +5,6 @@
 //
 
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/DebugInfoPreservation.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Process.h"
@@ -68,15 +67,15 @@ public:
     if (not Result)
       std::exit(EXIT_FAILURE);
 
-    // Force-enable `--enable-strict-debug-information-preservation-style` for
-    // revng binaries even if it wasn't specified.
-    llvm::EnableStrictDebugInformationPreservationStyle.setInitialValue(true);
-
     using namespace llvm;
     StringMap<cl::Option *> &Options(cl::getRegisteredOptions());
 
     const char *OptionName = "emit-hex-constant-literals-from";
-    getOption<uint64_t>(Options, OptionName)->setInitialValue(4096);
+    // This option is available in revng's patched LLVM, but it is not present
+    // in upstream/system LLVM builds. Treat it as optional to keep revng usable
+    // when linking against an unmodified LLVM.
+    if (Options.count(OptionName) != 0)
+      getOption<uint64_t>(Options, OptionName)->setInitialValue(4096);
   }
 
   ~InitRevng() { OnQuit->quit(); }
