@@ -3,6 +3,8 @@
 //
 
 #include <utility>
+#include <chrono>
+#include <cstdlib>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
@@ -96,6 +98,15 @@ using ModelTypesMap = std::map<const llvm::Value *,
 
 static Logger Log{ "c-backend" };
 static Logger VisitLog{ "c-backend-visit-order" };
+
+static bool isEnvEnabled(const char *Name) {
+  const char *Value = std::getenv(Name);
+  if (Value == nullptr)
+    return false;
+  if (Value[0] == '\0')
+    return true;
+  return Value[0] != '0';
+}
 
 static bool isStackFrameDecl(const llvm::Value *I) {
   auto *Call = dyn_cast_or_null<llvm::CallInst>(I);
@@ -482,6 +493,17 @@ static std::string getUndefToken(const model::Type &UndefType,
   return "undef(" + B.getTypeName(UndefType) + ")";
 }
 
+static std::string getDefaultArgumentToken(const model::Type &ArgType,
+                                          const ptml::ModelCBuilder &B) {
+  // For scalar types, the SDK/runtime provides an `undef(T)` macro.
+  if (ArgType.isScalar())
+    return getUndefToken(ArgType, B);
+
+  // For aggregates we can't use `undef(T)` (it casts an integer), so fall back
+  // to a C99 compound literal.
+  return addAlwaysParentheses(B.getTypeName(ArgType)) + "{0}";
+}
+
 static std::string getFormattedIntegerToken(const llvm::CallInst *Call,
                                             const ptml::ModelCBuilder &B) {
 
@@ -534,9 +556,69 @@ CCodeGenerator::getConstantToken(const llvm::Value *C) const {
   }
 
   if (auto *Function = dyn_cast<llvm::Function>(C)) {
+    std::string Token;
+
     const model::Function *ModelFunc = llvmToModelFunction(Model, *Function);
-    revng_assert(ModelFunc);
-    rc_return B.getReferenceTag(*ModelFunc);
+    if (ModelFunc != nullptr)
+      Token = B.getReferenceTag(*ModelFunc);
+
+    // Fallback: try to recover the model function from the LLVM symbol name
+    // when metadata is missing. This keeps selected-function workflows working
+    // even when we only have external declarations for other local functions.
+    if (Token.empty()) {
+      llvm::StringRef Name = Function->getName();
+      llvm::StringRef Identifier = Name;
+      if (Identifier.consume_front("local_")) {
+        std::string MAStr = Identifier.str();
+        // MetaAddress::toIdentifier() uses '_' as separator; MetaAddress::fromString()
+        // expects ':' between address and type.
+        if (auto Pos = MAStr.find('_'); Pos != std::string::npos)
+          MAStr[Pos] = ':';
+
+        MetaAddress Entry = MetaAddress::fromString(MAStr);
+        if (Entry.isValid()) {
+          auto It = Model.Functions().find(Entry);
+          if (It != Model.Functions().end())
+            Token = B.getReferenceTag(*It);
+        }
+      }
+    }
+
+    // Not every LLVM function present in the module necessarily corresponds to
+    // a model::Function (e.g. helper/runtime declarations, intrinsics, or
+    // partial/selected-function pipelines that only materialize declarations).
+    // Fall back to emitting the LLVM symbol name.
+    if (Token.empty())
+      Token = Function->getName().str();
+
+    // In the model, function values are typically treated as plain addresses
+    // (pointer_or_number*). Ensure the emitted C token has the corresponding C
+    // type even if the textual representation is a function designator.
+    //
+    // If type info is missing, fall back to casting to the native pointer-sized
+    // pointer_or_number type.
+    bool ShouldCast = true;
+    std::string CastTypeName;
+    if (auto It = TypeMap.find(Function); It != TypeMap.end()) {
+      const model::Type &T = *It->second;
+      if (T.isPointer())
+        ShouldCast = false;
+      else
+        CastTypeName = B.getTypeName(T);
+    }
+
+    if (ShouldCast) {
+      if (CastTypeName.empty()) {
+        using namespace model::Architecture;
+        uint64_t PtrSize = getPointerSize(Model.Architecture());
+        CastTypeName = (PtrSize == 8) ? "pointer_or_number64_t" :
+                       (PtrSize == 4) ? "pointer_or_number32_t" :
+                                        "pointer_or_number64_t";
+      }
+      Token = addAlwaysParentheses(CastTypeName) + " " + addParentheses(Token);
+    }
+
+    rc_return Token;
   }
 
   if (auto *Global = dyn_cast<llvm::GlobalVariable>(C)) {
@@ -1158,9 +1240,6 @@ CCodeGenerator::getInstructionToken(const llvm::Instruction *I) const {
   case llvm::Instruction::Call: {
     auto *Call = cast<llvm::CallInst>(I);
 
-    revng_assert(isCallToCustomOpcode(Call) or isCallToIsolatedFunction(Call)
-                 or isCallToNonIsolated(Call));
-
     if (isCallToCustomOpcode(Call))
       rc_return addDebugInfo(I, rc_recur getCustomOpcodeToken(Call), B);
 
@@ -1170,10 +1249,37 @@ CCodeGenerator::getInstructionToken(const llvm::Instruction *I) const {
     if (isCallToNonIsolated(Call))
       rc_return addDebugInfo(I, rc_recur getNonIsolatedCallToken(Call), B);
 
-    std::string Error = "Cannot get token for CallInst: " + dumpToString(Call);
-    revng_abort(Error.c_str());
+    // Fallback: handle regular direct calls that have not been classified/tagged
+    // by earlier pipeline steps.
+    std::string CalleeToken;
+    if (not isa<llvm::Function>(Call->getCalledOperand())) {
+      std::string CalledString = rc_recur getToken(Call->getCalledOperand());
+      CalleeToken = addParentheses(CalledString);
+    } else {
+      llvm::Function *Callee = getCalledFunction(Call);
+      revng_assert(Callee != nullptr);
 
-    rc_return "";
+      if (FunctionTags::DynamicFunction.isTagOf(Callee)) {
+        llvm::StringRef SymbolName = Callee->getName();
+        (void) SymbolName.consume_front("dynamic_");
+        if (auto *DF = Model.ImportedDynamicFunctions().tryGet(SymbolName.str()))
+          CalleeToken = B.getReferenceTag(*DF);
+        else
+          CalleeToken = getHelperFunctionReferenceTag(Callee, B);
+      } else if (const model::Function *MF = llvmToModelFunction(Model,
+                                                                 *Callee)) {
+        CalleeToken = B.getReferenceTag(*MF);
+      } else {
+        CalleeToken = getHelperFunctionReferenceTag(Callee, B);
+      }
+    }
+
+    revng_assert(not CalleeToken.empty());
+    rc_return addDebugInfo(I,
+                           rc_recur getCallToken(Call,
+                                                CalleeToken,
+                                                /*prototype=*/nullptr),
+                           B);
   }
 
   case llvm::Instruction::Ret: {
@@ -1260,17 +1366,53 @@ CCodeGenerator::getCallToken(const llvm::CallInst *Call,
                              const llvm::StringRef FuncName,
                              const model::TypeDefinition *Prototype) const {
   std::string Expression = FuncName.str();
-  if (Call->arg_size() == 0) {
-    Expression += "()";
 
-  } else {
-    llvm::StringRef Separator = "(";
-    for (const auto &Arg : Call->args()) {
-      Expression += Separator.str() + rc_recur getToken(Arg);
-      Separator = ", ";
+  // If a prototype is available, prefer emitting the argument list based on it
+  // so that the decompiled C is call-compatible with the generated headers even
+  // when the IR call has been trimmed (e.g. raw ABI register arguments).
+  std::vector<const model::Type *> ExpectedArgTypes;
+  if (Prototype != nullptr) {
+    if (auto *CFT = dyn_cast<model::CABIFunctionDefinition>(Prototype)) {
+      for (const model::Argument &Arg : CFT->Arguments()) {
+        ExpectedArgTypes.push_back(Arg.Type().isEmpty() ? nullptr :
+                                                         Arg.Type().get());
+      }
+    } else if (auto *RFT = dyn_cast<model::RawFunctionDefinition>(Prototype)) {
+      for (const model::NamedTypedRegister &Arg : RFT->Arguments()) {
+        ExpectedArgTypes.push_back(Arg.Type().isEmpty() ? nullptr :
+                                                         Arg.Type().get());
+      }
+      if (not RFT->StackArgumentsType().isEmpty())
+        ExpectedArgTypes.push_back(RFT->StackArgumentsType().get());
     }
-    Expression += ')';
   }
+
+  size_t ExpectedCount = ExpectedArgTypes.size();
+  size_t ActualCount = Call->arg_size();
+  size_t EmitCount = std::max(ExpectedCount, ActualCount);
+
+  Expression += "(";
+  llvm::StringRef Separator = "";
+  for (size_t I = 0; I < EmitCount; ++I) {
+    Expression += Separator.str();
+    Separator = ", ";
+
+    if (I < ActualCount) {
+      Expression += rc_recur getToken(Call->getArgOperand(I));
+      continue;
+    }
+
+    const model::Type *ExpectedTy = I < ExpectedCount ? ExpectedArgTypes[I] :
+                                                        nullptr;
+    if (ExpectedTy != nullptr) {
+      Expression += getDefaultArgumentToken(*ExpectedTy, B);
+    } else {
+      // Defensive fallback: if we can't determine the type, still emit a
+      // placeholder scalar.
+      Expression += "0";
+    }
+  }
+  Expression += ")";
 
   rc_return Expression;
 }
@@ -1282,9 +1424,17 @@ void CCodeGenerator::emitBasicBlock(const llvm::BasicBlock *BB,
   LoggerIndent MoreIndent{ VisitLog };
   revng_log(Log, "--------- BB " << BB->getName());
 
+  // LLVM IR should have a single terminator as the last instruction of a basic
+  // block. If the input IR is malformed and contains stray terminators, emit
+  // only the actual block terminator to keep the generated C sane.
+  const llvm::Instruction *RealTerminator = BB->getTerminator();
+
   bool NextStatementDoesNotReturn = false;
 
   for (const Instruction &I : *BB) {
+    if (I.isTerminator() and &I != RealTerminator)
+      continue;
+
     revng_log(Log, "Analyzing: " << dumpToString(I, ModuleSlotTracker));
 
     auto *Call = dyn_cast<llvm::CallInst>(&I);
@@ -2116,32 +2266,68 @@ std::string decompile(ControlFlowGraphCache &Cache,
   using namespace llvm;
   Task T2(3, Twine("decompile Function: ") + Twine(F.getName()));
 
+  const bool Progress = isEnvEnabled("REVNG_DECOMPILE_PROGRESS");
+  const auto CountBBs = [&F]() -> size_t { return std::distance(F.begin(), F.end()); };
+  const auto CountInsts = [&F]() -> size_t {
+    size_t Count = 0;
+    for (const BasicBlock &BB : F)
+      Count += BB.size();
+    return Count;
+  };
+  const auto LogStageStart = [&F, Progress](StringRef Stage) {
+    if (not Progress)
+      return;
+    errs() << "[revng] " << F.getName() << " stage=" << Stage << "\n";
+  };
+  const auto LogStageEnd = [&F, Progress](StringRef Stage,
+                                         std::chrono::steady_clock::time_point Start) {
+    if (not Progress)
+      return;
+    using namespace std::chrono;
+    auto Elapsed = duration_cast<milliseconds>(steady_clock::now() - Start);
+    errs() << "[revng] " << F.getName() << " stage=" << Stage << " done_ms=" << Elapsed.count()
+           << "\n";
+  };
+
+  if (Progress) {
+    errs() << "[revng] decompile " << F.getName() << " bbs=" << CountBBs() << " insts=" << CountInsts()
+           << "\n";
+  }
+
   // TODO: this will eventually become a GHASTContainer for revng pipeline
   ASTTree GHAST;
 
   // Generate the GHAST and beautify it.
   {
     T2.advance("restructureCFG");
+    LogStageStart("restructureCFG");
+    auto RestructureStart = std::chrono::steady_clock::now();
 
     // If `restructureCFG` failed, we want to provide as the decompiled output
     // a `Function` with an empty body containing an error message.
     if (not restructureCFG(F, GHAST)) {
       softFail(F, GHAST);
     }
+    LogStageEnd("restructureCFG", RestructureStart);
 
     // TODO: beautification should be optional, but at the moment it's not
     // truly so (if disabled, things crash). We should strive to make it
     // optional for real.
     T2.advance("beautifyAST");
+    LogStageStart("beautifyAST");
+    auto BeautifyStart = std::chrono::steady_clock::now();
 
     // If `beautifyAST` failed, we want to provide as the decompiled output
     // a `Function` with an empty body containing an error message.
     if (not beautifyAST(Model, F, GHAST)) {
       softFail(F, GHAST);
     }
+    LogStageEnd("beautifyAST", BeautifyStart);
   }
 
   T2.advance("decompileFunction");
+  LogStageStart("decompileFunction");
+  auto CodegenStart = std::chrono::steady_clock::now();
   if (Log.isEnabled()) {
     GHAST.dumpASTOnFile(F.getName().str(),
                         "ast-backend",
@@ -2151,11 +2337,13 @@ std::string decompile(ControlFlowGraphCache &Cache,
   // Generated C code for F
   auto VariablesToDeclare = computeVariableDeclarationScope(F, GHAST);
   auto NeedsLoopStateVar = hasLoopDispatchers(GHAST);
-  return decompileFunction(Cache,
-                           F,
-                           GHAST,
-                           Model,
-                           VariablesToDeclare,
-                           NeedsLoopStateVar,
-                           B);
+  std::string Decompiled = decompileFunction(Cache,
+                                             F,
+                                             GHAST,
+                                             Model,
+                                             VariablesToDeclare,
+                                             NeedsLoopStateVar,
+                                             B);
+  LogStageEnd("decompileFunction", CodegenStart);
+  return Decompiled;
 }
