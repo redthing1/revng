@@ -8,7 +8,7 @@ add_custom_command(
          "${CMAKE_BINARY_DIR}/include/revng/PipelineC/Wrappers.h"
   COMMAND
     # cmake-format: off
-    python "${CMAKE_SOURCE_DIR}/scripts/PipelineC_add_tracing.py"
+    ${REVNG_PYTHON_PIPELINEC_COMMAND} "${CMAKE_SOURCE_DIR}/scripts/PipelineC_add_tracing.py"
     -i "${CMAKE_SOURCE_DIR}/include/revng/PipelineC/ForwardDeclarationsC.h"
     -i "${CMAKE_SOURCE_DIR}/include/revng/PipelineC/Prototypes.h"
     "${CMAKE_BINARY_DIR}/include/revng/PipelineC"

@@ -335,7 +335,8 @@ struct std::hash<const /*= struct | fullname =*/::Key> {
   }
 };
 template<>
-struct hash</*= struct | fullname =*/::Key> : hash<const /*= struct | fullname =*/::Key> {};
+struct std::hash</*= struct | fullname =*/::Key>
+  : std::hash<const /*= struct | fullname =*/::Key> {};
 /** endif **/
 
 /*# --- UpcastablePointer stuff --- #*/
@@ -352,4 +353,3 @@ struct concrete_types_traits</*= const_qualifier =*/ /*= struct | user_fullname 
 };
 /** endfor **/
 /** endif **//*# End UpcastablePointer stuff #*/
-

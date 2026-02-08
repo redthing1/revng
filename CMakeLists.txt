@@ -595,6 +595,32 @@ file(RELATIVE_PATH PYTHON_INSTALL_PATH "${CMAKE_INSTALL_PREFIX}"
      "${Python_SITELIB}")
 
 #
+# Python codegen runner (no global pip installs)
+#
+if(REVNG_USE_UV)
+  find_program(REVNG_UV_EXECUTABLE NAMES uv)
+  if("${REVNG_UV_EXECUTABLE}" STREQUAL "REVNG_UV_EXECUTABLE-NOTFOUND")
+    message(FATAL_ERROR
+            "REVNG_USE_UV is enabled, but uv was not found in PATH. Install uv or set -DREVNG_USE_UV=OFF."
+    )
+  endif()
+
+  # IMPORTANT: do not invoke ${Python_EXECUTABLE} via an absolute path under
+  # `uv run`, otherwise it bypasses the uv-managed environment and won't see
+  # `--with ...` dependencies (e.g. jsonschema). Use `-p` to pick the desired
+  # interpreter for the environment, then run `python` from that environment.
+  set(REVNG_PYTHON_TTG_COMMAND "${REVNG_UV_EXECUTABLE}" run -p
+                               "${Python_EXECUTABLE}" --with pyyaml --with
+                               jinja2 --with jsonschema --with black -- python)
+  set(REVNG_PYTHON_PIPELINEC_COMMAND "${REVNG_UV_EXECUTABLE}" run -p
+                                     "${Python_EXECUTABLE}" --with pycparser --
+                                     python)
+else()
+  set(REVNG_PYTHON_TTG_COMMAND "${Python_EXECUTABLE}")
+  set(REVNG_PYTHON_PIPELINEC_COMMAND "${Python_EXECUTABLE}")
+endif()
+
+#
 # Build docs
 #
 if(REVNG_BUILD_MKDOCS_HTML)
