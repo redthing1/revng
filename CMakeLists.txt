@@ -225,6 +225,37 @@ else()
     TargetParser)
 endif()
 
+if(NOT REVNG_USE_PREBUILT_RUNTIME_RESOURCES)
+  # Find a clang suitable to compile revng's support/early-linked modules.
+  # Historically this was provided by the surrounding environment (orchestra),
+  # but for embeddable/superbuild use-cases we try to auto-detect it.
+  if(NOT TARGET_CLANG)
+    if(LLVM_TOOLS_BINARY_DIR)
+      find_program(TARGET_CLANG NAMES clang HINTS "${LLVM_TOOLS_BINARY_DIR}"
+                   NO_DEFAULT_PATH)
+    endif()
+    if(NOT TARGET_CLANG)
+      find_program(TARGET_CLANG NAMES clang)
+    endif()
+  endif()
+  if(NOT TARGET_CLANG)
+    message(FATAL_ERROR
+            "Unable to find clang. Set -DTARGET_CLANG=/path/to/clang or ensure clang is available in PATH/LLVM_TOOLS_BINARY_DIR."
+    )
+  endif()
+
+  # Helper bitcode input directory. This is used at build time to process the
+  # libtcg helper modules, but it does not have to match CMAKE_INSTALL_PREFIX.
+  if("${REVNG_LIBTCG_HELPERS_DIR}" STREQUAL "")
+    if(NOT "${REVNG_LIBTCG_PREFIX}" STREQUAL "")
+      set(REVNG_LIBTCG_HELPERS_DIR "${REVNG_LIBTCG_PREFIX}/share/libtcg")
+    else()
+      set(REVNG_LIBTCG_HELPERS_DIR "${CMAKE_INSTALL_PREFIX}/share/libtcg")
+    endif()
+  endif()
+endif()
+
+#
 # MLIR CMake stuff
 #
 # Only required for Clift/MLIR components (and Python bindings, which currently
