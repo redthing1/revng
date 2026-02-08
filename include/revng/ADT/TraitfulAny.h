@@ -11,7 +11,13 @@
 // Please change carefully and make sure you minimize the changes w.r.t. the
 // original file.
 
+#include <cstdlib>
+#include <cstddef>
+#include <initializer_list>
 #include <memory>
+#include <new>
+#include <type_traits>
+#include <utility>
 
 
 namespace revng {
@@ -54,9 +60,32 @@ using type_info = void;
 #endif
 #define _VSTD std
 #define __remove_cvref_t remove_cvref_t
-#define __throw_bad_any_cast abort
-#define __libcpp_unreachable abort
+#define __throw_bad_any_cast ::abort
+#define __libcpp_unreachable ::abort
 #define _LIBCPP_HAS_NO_RTTI
+
+// Minimal libc++ config macro shims for this vendored header.
+#ifndef _LIBCPP_INLINE_VISIBILITY
+#define _LIBCPP_INLINE_VISIBILITY
+#endif
+#ifndef _LIBCPP_TEMPLATE_VIS
+#define _LIBCPP_TEMPLATE_VIS
+#endif
+#ifndef _NOEXCEPT
+#define _NOEXCEPT noexcept
+#endif
+#ifndef _LIBCPP_SUPPRESS_DEPRECATED_PUSH
+#define _LIBCPP_SUPPRESS_DEPRECATED_PUSH
+#endif
+#ifndef _LIBCPP_SUPPRESS_DEPRECATED_POP
+#define _LIBCPP_SUPPRESS_DEPRECATED_POP
+#endif
+#ifndef _LIBCPP_AVAILABILITY_THROW_BAD_ANY_CAST
+#define _LIBCPP_AVAILABILITY_THROW_BAD_ANY_CAST
+#endif
+#ifndef _LIBCPP_HIDE_FROM_ABI
+#define _LIBCPP_HIDE_FROM_ABI
+#endif
 
 template <class _Tp> struct __is_inplace_type_imp : false_type {};
 template <class _Tp> struct __is_inplace_type_imp<in_place_type_t<_Tp>> : true_type {};
@@ -439,7 +468,17 @@ namespace __any_imp
         case _Action::_TypeInfo:
           return const_cast<void *>(__any_imp::__get_fallback_typeid<_Tp>());
         case _Action::_Custom:
-            __libcpp_unreachable();
+        default:
+          // Support trait actions even when the stored object doesn't fit in the
+          // small-buffer optimization (e.g. libstdc++'s std::string is often
+          // "large" and ends up here). _SmallHandler already supports this via
+          // its default case, and we need parity to keep trait calls working.
+          return reinterpret_cast<void *>(
+            Trait::template handle<_Tp>(
+              static_cast<Trait::TraitAction>(static_cast<size_t>(__act)
+                                              - static_cast<size_t>(_Action::_Custom)),
+              const_cast<any *>(__this),
+              __other));
         }
         __libcpp_unreachable();
     }
