@@ -55,7 +55,7 @@ target_tuple_tree_generator(
   GLOBAL_NAME
   Model
   PYTHON_MIXINS
-  "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/model/mixins.py"
+  "${CMAKE_SOURCE_DIR}/python/revng/model/mixins.py"
   SEPARATE_STRING_TYPES
   "MetaAddress"
   SCALAR_TYPES

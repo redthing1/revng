@@ -431,7 +431,7 @@ function(
       ${EXTERNAL_TYPE_ARGS} ${SCALAR_TYPE_ARGS} "${YAML_DEFINITIONS}"
     OUTPUT "${OUTPUT_PATH}"
     DEPENDS "${YAML_DEFINITIONS}" ${PYTHON_TEMPLATES}
-            ${TUPLE_TREE_GENERATOR_SOURCES})
+            ${TUPLE_TREE_GENERATOR_SOURCES} ${PYTHON_MIXINS})
 endfunction()
 
 # Extracts definitions and generates C++ headers and implementations from the
