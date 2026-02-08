@@ -265,6 +265,9 @@ fromStringImpl(llvm::StringRef YAMLString, void *Context = nullptr) {
     YAMLInput >> Result;
 
     std::error_code EC = YAMLInput.error();
+    // KeyedObjectContainer sequences keep a batch inserter alive during YAML
+    // parsing; finalize it now so containers are usable by callers.
+    revng::detail::finalizeYAMLKeyedObjectContainers(!EC);
     if (EC)
       return llvm::createStringError(EC, ErrorMessage);
 
