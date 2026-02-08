@@ -6,6 +6,9 @@
 
 #include "llvm/PassRegistry.h"
 #include "llvm/Passes/PassBuilder.h"
+#include "llvm/Pass.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/ErrorHandling.h"
 
 #include "revng/Pipeline/GenericLLVMPipe.h"
 #include "revng/Pipeline/LLVMContainer.h"
@@ -22,6 +25,67 @@ void O2Pipe::registerPasses(llvm::legacy::PassManager &Manager) {
 
   PassBuilder Builder;
   Builder.buildPerModuleDefaultPipeline(OptimizationLevel::O2);
+}
+
+namespace {
+
+// System LLVM builds on some distributions disable the legacy pass registry for
+// built-in passes. revng's pipelines still reference these pass names, so we
+// execute them through the new pass manager.
+class RunNewPMPipelinePass : public llvm::ModulePass {
+public:
+  static char ID;
+
+private:
+  std::string PipelineText;
+
+public:
+  explicit RunNewPMPipelinePass(std::string PipelineText) :
+    llvm::ModulePass(ID), PipelineText(std::move(PipelineText)) {}
+
+  bool runOnModule(llvm::Module &M) override {
+    using namespace llvm;
+
+    LoopAnalysisManager LAM;
+    FunctionAnalysisManager FAM;
+    CGSCCAnalysisManager CGAM;
+    ModuleAnalysisManager MAM;
+
+    PassBuilder PB;
+    PB.registerModuleAnalyses(MAM);
+    PB.registerCGSCCAnalyses(CGAM);
+    PB.registerFunctionAnalyses(FAM);
+    PB.registerLoopAnalyses(LAM);
+    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+
+    ModulePassManager MPM;
+    if (Error Err = PB.parsePassPipeline(MPM, PipelineText)) {
+      std::string Message = "Could not parse LLVM pass pipeline '" + PipelineText
+                            + "': " + toString(std::move(Err));
+      report_fatal_error(StringRef(Message), false);
+    }
+
+    MPM.run(M, MAM);
+    return true;
+  }
+};
+
+char RunNewPMPipelinePass::ID = 0;
+
+} // namespace
+
+bool PureLLVMPassWrapper::passExists(llvm::StringRef PassName) {
+  if (llvm::PassRegistry::getPassRegistry()->getPassInfo(PassName))
+    return true;
+
+  llvm::PassBuilder PB;
+  llvm::ModulePassManager MPM;
+  if (llvm::Error Err = PB.parsePassPipeline(MPM, PassName)) {
+    llvm::consumeError(std::move(Err));
+    return false;
+  }
+
+  return true;
 }
 
 std::unique_ptr<LLVMPassWrapperBase> PureLLVMPassWrapper::clone() const {
@@ -80,6 +144,10 @@ void GenericLLVMPipe::run(ExecutionContext &EC, LLVMContainer &Container) {
 }
 
 void PureLLVMPassWrapper::registerPasses(llvm::legacy::PassManager &Manager) {
-  auto *Registry = llvm::PassRegistry::getPassRegistry();
-  Manager.add(Registry->getPassInfo(PassName)->createPass());
+  if (auto *PassInfo = llvm::PassRegistry::getPassRegistry()->getPassInfo(PassName)) {
+    Manager.add(PassInfo->createPass());
+    return;
+  }
+
+  Manager.add(new RunNewPMPipelinePass(PassName));
 }

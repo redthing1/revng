@@ -48,9 +48,7 @@ private:
 public:
   PureLLVMPassWrapper(llvm::StringRef PassName) : PassName(PassName.str()) {}
 
-  static bool passExists(llvm::StringRef PassName) {
-    return llvm::PassRegistry::getPassRegistry()->getPassInfo(PassName);
-  }
+  static bool passExists(llvm::StringRef PassName);
 
   static llvm::Expected<std::unique_ptr<PureLLVMPassWrapper>>
   create(llvm::StringRef PassName) {
