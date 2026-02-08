@@ -1,0 +1,12 @@
+@PACKAGE_INIT@
+
+# Import revng targets.
+# The export file is installed as share/revng/cmake/revng.cmake
+include("${CMAKE_CURRENT_LIST_DIR}/revng.cmake")
+
+# Convenience variables for locating runtime resources relative to the prefix.
+set(revng_ROOT "${PACKAGE_PREFIX_DIR}")
+set(revng_SHARE_DIR "${PACKAGE_PREFIX_DIR}/share/revng")
+set(revng_PIPELINES_YAML "${revng_SHARE_DIR}/pipelines/revng-pipelines.yml")
+set(revng_ANALYSES_DIR "${PACKAGE_PREFIX_DIR}/lib/revng/analyses")
+

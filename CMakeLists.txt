@@ -4,7 +4,9 @@
 
 cmake_minimum_required(VERSION 3.15.0)
 
-project(revng)
+# NOTE: revng upstream did not historically set a project version, but having a
+# version enables generating a proper CMake package config (revngConfig.cmake).
+project(revng VERSION 0.0.0)
 
 include(share/revng/cmake/Common.cmake)
 
@@ -258,7 +260,7 @@ add_custom_command(
     > "${COMPONENT_HASH_PATH}")
 add_custom_target(generate-component-hash ALL DEPENDS "${COMPONENT_HASH_PATH}")
 install(FILES "${COMPONENT_HASH_PATH}"
-        DESTINATION "${CMAKE_INSTALL_DIR}/share/revng/component-hashes/")
+        DESTINATION "share/revng/component-hashes/")
 
 #
 # share/revng
@@ -274,8 +276,59 @@ install(
 # Export CMake targets
 install(
   EXPORT revng
-  NAMESPACE DESTINATION
-  share/revng/cmake)
+  FILE revng.cmake
+  NAMESPACE revng::
+  DESTINATION share/revng/cmake)
+
+# Provide a proper CMake package config so consumers can use:
+#   find_package(revng CONFIG)
+include(CMakePackageConfigHelpers)
+configure_package_config_file(
+  "${CMAKE_SOURCE_DIR}/share/revng/cmake/revngConfig.cmake.in"
+  "${CMAKE_BINARY_DIR}/share/revng/cmake/revngConfig.cmake"
+  INSTALL_DESTINATION share/revng/cmake
+  NO_CHECK_REQUIRED_COMPONENTS_MACRO)
+write_basic_package_version_file(
+  "${CMAKE_BINARY_DIR}/share/revng/cmake/revngConfigVersion.cmake"
+  VERSION "${PROJECT_VERSION}"
+  COMPATIBILITY AnyNewerVersion)
+install(FILES "${CMAKE_BINARY_DIR}/share/revng/cmake/revngConfig.cmake"
+              "${CMAKE_BINARY_DIR}/share/revng/cmake/revngConfigVersion.cmake"
+        DESTINATION share/revng/cmake)
+
+# Optionally bundle runtime dependencies shipped in the official revng
+# distribution (or an extracted docker /revng/root prefix). This makes the
+# installed prefix self-contained enough to run lifting without relying on
+# system-installed libtcg.
+if(REVNG_BUNDLE_EXTERNAL_RUNTIME)
+  if("${REVNG_RUNTIME_PREFIX}" STREQUAL "")
+    message(FATAL_ERROR
+            "REVNG_BUNDLE_EXTERNAL_RUNTIME is enabled, but REVNG_RUNTIME_PREFIX is empty."
+    )
+  endif()
+
+  # libtcg shared objects are expected by revng at <root>/lib/libtcg-*.so
+  if(EXISTS "${REVNG_RUNTIME_PREFIX}/lib64")
+    install(DIRECTORY "${REVNG_RUNTIME_PREFIX}/lib64/"
+            DESTINATION lib
+            FILES_MATCHING
+            PATTERN "libtcg-*.so*")
+  endif()
+  if(EXISTS "${REVNG_RUNTIME_PREFIX}/lib")
+    install(DIRECTORY "${REVNG_RUNTIME_PREFIX}/lib/"
+            DESTINATION lib
+            FILES_MATCHING
+            PATTERN "libtcg-*.so*")
+  endif()
+
+  # Some distributions may provide raw libtcg helper bitcode here. This is not
+  # required at runtime (revng uses share/revng/libtcg-helpers-*.bc), but it's
+  # useful to ship it when available.
+  if(EXISTS "${REVNG_RUNTIME_PREFIX}/share/libtcg")
+    install(DIRECTORY "${REVNG_RUNTIME_PREFIX}/share/libtcg/"
+            DESTINATION share/libtcg)
+  endif()
+endif()
 
 # Create share/revng/additional-bin-paths
 set(ADDITIONAL_BIN_PATHS "${CMAKE_BINARY_DIR}/share/revng/additional-bin-paths")
