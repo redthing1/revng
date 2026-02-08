@@ -469,37 +469,46 @@ python_module(
 #
 # Nanobind module generation and creation of revng.internal.{,_}cpp_pypeline
 #
-llvm_map_components_to_libnames(LLVM_LIBRARIES Support Core)
+if(REVNG_BUILD_PYTHON_BINDINGS)
+  if(LLVM_LINK_LLVM_DYLIB)
+    set(LLVM_LIBRARIES LLVM)
+  else()
+    llvm_map_components_to_libnames(LLVM_LIBRARIES Support Core)
+  endif()
 
-set(CPP_MODULE_NAME _pipebox)
-add_library("${CPP_MODULE_NAME}" MODULE
-            "${CMAKE_SOURCE_DIR}/lib/PipeboxCommon/Python/_pipebox.cpp")
-set_target_properties(
-  "${CPP_MODULE_NAME}"
-  PROPERTIES LINKER_LANGUAGE CXX
-             PREFIX ""
-             LIBRARY_OUTPUT_DIRECTORY
-             "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/internal")
-target_link_libraries(
-  "${CPP_MODULE_NAME}" PUBLIC ${Python_LIBRARIES} ${LLVM_LIBRARIES} nanobind
-                              revngSupport revngModel)
-target_include_directories("${CPP_MODULE_NAME}" PUBLIC ${Python_INCLUDE_DIRS})
+  set(CPP_MODULE_NAME _pipebox)
+  add_library("${CPP_MODULE_NAME}" MODULE
+              "${CMAKE_SOURCE_DIR}/lib/PipeboxCommon/Python/_pipebox.cpp")
+  set_target_properties(
+    "${CPP_MODULE_NAME}"
+    PROPERTIES LINKER_LANGUAGE CXX
+               PREFIX ""
+               LIBRARY_OUTPUT_DIRECTORY
+               "${CMAKE_BINARY_DIR}/${PYTHON_INSTALL_PATH}/revng/internal")
+  target_link_libraries(
+    "${CPP_MODULE_NAME}" PUBLIC ${Python_LIBRARIES} ${LLVM_LIBRARIES} nanobind
+                                revngSupport revngModel)
+  target_include_directories("${CPP_MODULE_NAME}" PUBLIC ${Python_INCLUDE_DIRS})
 
-python_module(
-  TARGET_NAME
-  python-cpp-pipebox
-  WHEEL
-  revng_internal
-  MODULE_FILES
-  "revng/internal/pipebox.py"
-  MODULE_GENERATED_FILES
-  "revng/internal/${CPP_MODULE_NAME}.so")
+  python_module(
+    TARGET_NAME
+    python-cpp-pipebox
+    WHEEL
+    revng_internal
+    MODULE_FILES
+    "revng/internal/pipebox.py"
+    MODULE_GENERATED_FILES
+    "revng/internal/${CPP_MODULE_NAME}.so")
+endif()
 
 #
 # Generate actual wheel rules
 #
-python_wheel(NAME revng PYPROJECT revng/pyproject.toml README revng/README.md)
-python_wheel(NAME revng_internal PYPROJECT revng/internal/pyproject.toml README
-             revng/internal/README.md)
-python_wheel(NAME pypeline PYPROJECT revng/pypeline/pyproject.toml README
-             revng/pypeline/README.md)
+if(REVNG_BUILD_PYTHON_WHEELS)
+  python_wheel(NAME revng PYPROJECT revng/pyproject.toml README
+               revng/README.md)
+  python_wheel(NAME revng_internal PYPROJECT revng/internal/pyproject.toml
+               README revng/internal/README.md)
+  python_wheel(NAME pypeline PYPROJECT revng/pypeline/pyproject.toml README
+               revng/pypeline/README.md)
+endif()

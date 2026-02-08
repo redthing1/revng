@@ -2,7 +2,9 @@
 # This file is distributed under the MIT License. See LICENSE.md for details.
 #
 
-add_subdirectory(clift-opt)
+if(REVNG_BUILD_CLIFT)
+  add_subdirectory(clift-opt)
+endif()
 add_subdirectory(lddtree)
 add_subdirectory(model)
 add_subdirectory(pipeline)

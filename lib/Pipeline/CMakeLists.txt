@@ -33,8 +33,11 @@ set(PIPELINEDESCRIPTION_SCHEMA_PATH
 )
 set(PIPELINEDESCRIPTION_JSONSCHEMA_PATH
     "${CMAKE_BINARY_DIR}/pipelineDescription-jsonschema.yml")
-set(PIPELINEDESCRIPTION_TYPESCRIPT_PATH
-    "${CMAKE_BINARY_DIR}/lib/typescript/pipeline-description.ts")
+set(PIPELINEDESCRIPTION_TYPESCRIPT_PATH "")
+if(REVNG_BUILD_TYPESCRIPT)
+  set(PIPELINEDESCRIPTION_TYPESCRIPT_PATH
+      "${CMAKE_BINARY_DIR}/lib/typescript/pipeline-description.ts")
+endif()
 target_tuple_tree_generator(
   revngPipeline
   INSTALL

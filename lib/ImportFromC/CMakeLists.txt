@@ -17,10 +17,7 @@ target_link_libraries(
   revngPTML
   revngBasicAnalyses
   revngModelToHeader
-  clangBasic
-  clangAST
-  clangDriver
-  clangSerialization
-  clangFrontend
-  clangTooling
+  # Fedora (and other distros) commonly ship the monolithic libclang-cpp.so,
+  # not the individual libclang*.so component libraries.
+  clang-cpp
   ${LLVM_LIBRARIES})

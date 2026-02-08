@@ -8,7 +8,110 @@ project(revng)
 
 include(share/revng/cmake/Common.cmake)
 
-find_program(CLANG_PATH NAMES clang)
+#
+# Build configuration knobs
+#
+# NOTE: defaults preserve the upstream "build the full distribution" behavior.
+# Set REVNG_SDK_MODE=ON to get a leaner, embeddable build by default.
+option(REVNG_SDK_MODE "Build a minimal embeddable SDK (disable docs/tests/tools and heavy packaging steps)" OFF)
+
+if(REVNG_SDK_MODE)
+  set(REVNG_DEFAULT_FULL_FEATURES OFF)
+  set(REVNG_DEFAULT_INSTALL_LIBEXEC OFF)
+  set(REVNG_DEFAULT_PYTHON_BINDINGS OFF)
+  set(REVNG_DEFAULT_IMPORT_FROM_C OFF)
+  set(REVNG_DEFAULT_PIPELINEC OFF)
+  set(REVNG_DEFAULT_PREBUILT_RUNTIME_RESOURCES ON)
+  set(REVNG_DEFAULT_WERROR OFF)
+else()
+  set(REVNG_DEFAULT_FULL_FEATURES ON)
+  set(REVNG_DEFAULT_INSTALL_LIBEXEC ON)
+  set(REVNG_DEFAULT_PYTHON_BINDINGS ON)
+  set(REVNG_DEFAULT_IMPORT_FROM_C ON)
+  set(REVNG_DEFAULT_PIPELINEC ON)
+  set(REVNG_DEFAULT_PREBUILT_RUNTIME_RESOURCES OFF)
+  set(REVNG_DEFAULT_WERROR ON)
+endif()
+
+option(REVNG_BUILD_DOCS "Build documentation targets" ${REVNG_DEFAULT_FULL_FEATURES})
+option(REVNG_BUILD_MKDOCS_HTML "Build mkdocs HTML site (requires mkdocs)" ${REVNG_DEFAULT_FULL_FEATURES})
+option(REVNG_BUILD_TYPESCRIPT "Build TypeScript packages (requires npm)" ${REVNG_DEFAULT_FULL_FEATURES})
+option(REVNG_BUILD_TOOLS "Build CLI tools" ${REVNG_DEFAULT_FULL_FEATURES})
+option(REVNG_BUILD_TESTS "Build and register tests" ${REVNG_DEFAULT_FULL_FEATURES})
+option(REVNG_BUILD_WELL_KNOWN_BINARIES "Build helper targets importing well-known models" ${REVNG_DEFAULT_FULL_FEATURES})
+option(REVNG_BUILD_CLANG_FORMAT_DOTFILE "Generate .clang-format config from check-conventions" ${REVNG_DEFAULT_FULL_FEATURES})
+option(REVNG_BUILD_IMPORT_FROM_C "Build ImportFromC analysis (requires clang-devel)" ${REVNG_DEFAULT_IMPORT_FROM_C})
+option(REVNG_BUILD_PIPELINEC "Build PipelineC C API library (requires pycparser)" ${REVNG_DEFAULT_PIPELINEC})
+option(REVNG_BUILD_CLIFT "Build experimental Clift/MLIR components (requires MLIR)" ${REVNG_DEFAULT_FULL_FEATURES})
+
+option(REVNG_BUILD_PYTHON_WHEELS "Build and install Python wheels" ${REVNG_DEFAULT_FULL_FEATURES})
+option(REVNG_BUILD_PYTHON_BINDINGS "Build native Python bindings (nanobind-based pipebox)" ${REVNG_DEFAULT_PYTHON_BINDINGS})
+option(REVNG_BUILD_PYTHON "Build Python modules/tools (CLI wrapper, wheels)" ${REVNG_DEFAULT_FULL_FEATURES})
+
+option(REVNG_INSTALL_LIBEXEC "Install libexec/ helper scripts" ${REVNG_DEFAULT_INSTALL_LIBEXEC})
+
+option(REVNG_WERROR "Treat compiler warnings as errors" ${REVNG_DEFAULT_WERROR})
+
+# Use prebuilt runtime resources from an extracted official distribution
+# (e.g. docker /revng/root) to avoid generating helper bitcode/support modules.
+option(REVNG_USE_PREBUILT_RUNTIME_RESOURCES
+       "Use prebuilt runtime resources from REVNG_RUNTIME_PREFIX (avoid building helper bitcode/support modules)"
+       ${REVNG_DEFAULT_PREBUILT_RUNTIME_RESOURCES})
+option(REVNG_COPY_EXTERNAL_RUNTIME_TO_BUILD_TREE
+       "Copy external runtime libraries (libtcg-*.so) from REVNG_RUNTIME_PREFIX into the build tree for running from build dir"
+       ${REVNG_DEFAULT_PREBUILT_RUNTIME_RESOURCES})
+
+# Run Python code generators via uv (no global pip installs).
+option(REVNG_USE_UV
+       "Use uv run --with to execute Python code generators without installing deps into the user/system environment"
+       ON)
+
+# External runtime/deps integration points (superbuild-friendly).
+set(REVNG_LIBTCG_PREFIX "" CACHE PATH "Prefix containing share/libtcg (libtcg-helpers-*.bc)")
+set(REVNG_LIBTCG_HELPERS_DIR "" CACHE PATH "Directory containing libtcg helper bitcode (libtcg-helpers-*.bc)")
+set(REVNG_RUNTIME_PREFIX "" CACHE PATH "Prefix to bundle external runtime deps from (e.g. extracted revng docker /revng/root)")
+option(REVNG_BUNDLE_EXTERNAL_RUNTIME "Bundle external runtime deps (libtcg + helper bitcode) into this install prefix" OFF)
+
+# jemalloc is a dependency of the official prebuilt libtcg runtimes. Ensure it
+# is in the initial load set (DT_NEEDED) to avoid glibc static TLS allocation
+# failures when dlopening libtcg later.
+option(REVNG_LINK_JEMALLOC_EARLY
+       "Link libjemalloc into revngLift to avoid dlopen static TLS failures"
+       ON)
+set(REVNG_JEMALLOC_LIBRARY "" CACHE FILEPATH "Path to libjemalloc (e.g. /usr/lib64/libjemalloc.so.2)")
+set(REVNG_HAVE_JEMALLOC OFF)
+if(REVNG_LINK_JEMALLOC_EARLY AND UNIX AND NOT APPLE)
+  set(_REVNG_JEMALLOC_CANDIDATE "${REVNG_JEMALLOC_LIBRARY}")
+  if(_REVNG_JEMALLOC_CANDIDATE STREQUAL "")
+    # Prefer the devel symlink if available, but fall back to the runtime SONAME.
+    find_library(_REVNG_JEMALLOC_SYMLINK NAMES jemalloc)
+    if(_REVNG_JEMALLOC_SYMLINK)
+      set(_REVNG_JEMALLOC_CANDIDATE "${_REVNG_JEMALLOC_SYMLINK}")
+    else()
+      find_file(_REVNG_JEMALLOC_SONAME
+                NAMES libjemalloc.so.2
+                PATHS /usr/lib64 /lib64 /usr/lib /lib)
+      set(_REVNG_JEMALLOC_CANDIDATE "${_REVNG_JEMALLOC_SONAME}")
+    endif()
+  endif()
+
+  if(_REVNG_JEMALLOC_CANDIDATE)
+    set(REVNG_JEMALLOC_LIBRARY
+        "${_REVNG_JEMALLOC_CANDIDATE}"
+        CACHE FILEPATH
+              "Path to libjemalloc (e.g. /usr/lib64/libjemalloc.so.2)"
+        FORCE)
+    message(STATUS "Found jemalloc: ${REVNG_JEMALLOC_LIBRARY}")
+    set(REVNG_HAVE_JEMALLOC ON)
+  else()
+    message(WARNING
+            "jemalloc not found. dlopening libtcg may fail with 'cannot allocate memory in static TLS block'. "
+            "Install jemalloc or set -DREVNG_JEMALLOC_LIBRARY=/path/to/libjemalloc.so.2.")
+  endif()
+endif()
+
+# clang used to compile support/early-linked LLVM IR modules.
+set(TARGET_CLANG "" CACHE FILEPATH "Path to clang executable used to build revng support modules")
 
 #
 # Compile flags
@@ -33,7 +136,9 @@ set(CMAKE_SHARED_LIBRARY_LINK_C_FLAGS)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wextra")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror")
+if(REVNG_WERROR)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror")
+endif()
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility-inlines-hidden")
@@ -112,13 +217,25 @@ llvm_map_components_to_libnames(
   TargetParser)
 
 # MLIR CMake stuff
-find_package(MLIR REQUIRED CONFIG)
-include_directories(${MLIR_INCLUDE_DIRS})
+#
+# Only required for Clift/MLIR components (and Python bindings, which currently
+# depend on Clift as well).
+if(REVNG_BUILD_CLIFT OR REVNG_BUILD_PYTHON_BINDINGS)
+  find_package(MLIR REQUIRED CONFIG)
+endif()
 
 #
 # Link Clang
 #
-find_package(Clang REQUIRED CONFIG)
+if(REVNG_BUILD_IMPORT_FROM_C)
+  find_package(Clang REQUIRED CONFIG)
+endif()
+
+if(REVNG_BUILD_PYTHON_BINDINGS AND NOT REVNG_BUILD_CLIFT)
+  message(FATAL_ERROR
+          "REVNG_BUILD_PYTHON_BINDINGS requires REVNG_BUILD_CLIFT=ON "
+          "(Pipebox links revngClift/revngCliftPipes).")
+endif()
 
 #
 # Component hash
@@ -299,44 +416,68 @@ foreach(WELL_KNOWN_BINARY IN LISTS WELL_KNOWN_BINARIES)
   set(MODEL_PATH "share/revng/well-known-models/${BASENAME}.yml")
   set(FULL_MODEL_PATH "${CMAKE_BINARY_DIR}/${MODEL_PATH}")
 
+if(REVNG_BUILD_WELL_KNOWN_BINARIES)
+  # Produce well-known-models (dev/CI helper target).
+  file(
+    GLOB
+    WELL_KNOWN_BINARIES
+    "${CMAKE_INSTALL_PREFIX}/share/revng/test/tests/well-known-models/*revng-qa.compiled-with-debug*"
+  )
+
+  add_custom_target(well-known-binaries ALL)
+
+  foreach(WELL_KNOWN_BINARY IN LISTS WELL_KNOWN_BINARIES)
+
+    get_filename_component(BASENAME "${WELL_KNOWN_BINARY}" NAME)
+    set(MODEL_PATH "share/revng/well-known-models/${BASENAME}.yml")
+    set(FULL_MODEL_PATH "${CMAKE_BINARY_DIR}/${MODEL_PATH}")
+
+    add_custom_command(
+      OUTPUT "${FULL_MODEL_PATH}"
+      COMMAND "./bin/revng" analyze import-binary -o "${FULL_MODEL_PATH}"
+              "${WELL_KNOWN_BINARY}"
+      MAIN_DEPENDENCY "${WELL_KNOWN_BINARY}"
+      DEPENDS revng-all-binaries generate-revngModel-tuple-tree-code
+              generate-revngPipeline-tuple-tree-code
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+    add_custom_target("import-${BASENAME}" DEPENDS "${FULL_MODEL_PATH}")
+
+    add_dependencies(well-known-binaries "import-${BASENAME}")
+
+  endforeach()
+endif()
+
+#
+# libexec/revng (helper scripts)
+#
+if(REVNG_INSTALL_LIBEXEC OR REVNG_BUILD_CLANG_FORMAT_DOTFILE)
+  add_custom_target(
+    copy_libexec ALL COMMAND cp -Tar "${CMAKE_SOURCE_DIR}/libexec/"
+                             "${CMAKE_BINARY_DIR}/libexec/")
+
+  if(REVNG_INSTALL_LIBEXEC)
+    install(
+      DIRECTORY "${CMAKE_BINARY_DIR}/libexec/"
+      DESTINATION libexec/
+      USE_SOURCE_PERMISSIONS)
+  endif()
+endif()
+
+if(REVNG_BUILD_CLANG_FORMAT_DOTFILE)
+  # Custom command to create .clang-format file from revng-check-conventions
   add_custom_command(
-    OUTPUT "${FULL_MODEL_PATH}"
-    COMMAND "./bin/revng" analyze import-binary -o "${FULL_MODEL_PATH}"
-            "${WELL_KNOWN_BINARY}"
-    MAIN_DEPENDENCY "${WELL_KNOWN_BINARY}"
-    DEPENDS revng-all-binaries generate-revngModel-tuple-tree-code
-            generate-revngPipeline-tuple-tree-code
-    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
-  add_custom_target("import-${BASENAME}" DEPENDS "${FULL_MODEL_PATH}")
+    OUTPUT "${CMAKE_BINARY_DIR}/share/revng/.clang-format"
+    DEPENDS "${CMAKE_SOURCE_DIR}/libexec/revng/check-conventions"
+            "${CMAKE_SOURCE_DIR}/share/revng/clang-format-style-file.yml"
+            copy_share copy_libexec
+    COMMAND
+      "${CMAKE_BINARY_DIR}/libexec/revng/check-conventions" ARGS
+      --print-clang-format-config >
+      "${CMAKE_BINARY_DIR}/share/revng/.clang-format")
 
-  add_dependencies(well-known-binaries "import-${BASENAME}")
-
-endforeach()
-
-# Custom command to create .clang-format file from revng-check-conventions
-add_custom_command(
-  OUTPUT "${CMAKE_BINARY_DIR}/share/revng/.clang-format"
-  DEPENDS "${CMAKE_SOURCE_DIR}/libexec/revng/check-conventions"
-          "${CMAKE_SOURCE_DIR}/share/revng/clang-format-style-file.yml"
-          copy_share copy_libexec
-  COMMAND
-    "${CMAKE_BINARY_DIR}/libexec/revng/check-conventions" ARGS
-    --print-clang-format-config >
-    "${CMAKE_BINARY_DIR}/share/revng/.clang-format")
-
-add_custom_target(clang-format-dot-file ALL
-                  DEPENDS "${CMAKE_BINARY_DIR}/share/revng/.clang-format")
-
-#
-# libexec/revng
-#
-add_custom_target(
-  copy_libexec ALL COMMAND cp -Tar "${CMAKE_SOURCE_DIR}/libexec/"
-                           "${CMAKE_BINARY_DIR}/libexec/")
-install(
-  DIRECTORY "${CMAKE_BINARY_DIR}/libexec/"
-  DESTINATION libexec/
-  USE_SOURCE_PERMISSIONS)
+  add_custom_target(clang-format-dot-file ALL
+                    DEPENDS "${CMAKE_BINARY_DIR}/share/revng/.clang-format")
+endif()
 
 #
 # Export information useful for subdirectories
@@ -346,75 +487,83 @@ set(PYTHON_GENERATED_MODEL_PATH revng/model/_generated.py)
 #
 # Enable CTest
 #
-enable_testing()
+if(REVNG_BUILD_TESTS)
+  enable_testing()
+endif()
 
 #
-# Find Python using the FindPython module. We request two components: *
-# Interpreter: needed for some variables, such as $Python_SITELIB * Development:
-# needed to compile nanobind module and friends, provides the
-# $Python_INCLUDE_DIRS and $Python_LIBRARIES variables
-#
-find_package(
-  Python
-  COMPONENTS Interpreter Development
-  REQUIRED)
+# Find Python using the FindPython module.
+# Interpreter: always required (codegen scripts and revng CLI wrapper).
+# Development: only required for native bindings (nanobind).
+set(REVNG_PYTHON_COMPONENTS Interpreter)
+if(REVNG_BUILD_PYTHON_BINDINGS)
+  list(APPEND REVNG_PYTHON_COMPONENTS Development)
+endif()
+find_package(Python COMPONENTS ${REVNG_PYTHON_COMPONENTS} REQUIRED)
 file(RELATIVE_PATH PYTHON_INSTALL_PATH "${CMAKE_INSTALL_PREFIX}"
      "${Python_SITELIB}")
 
 #
 # Build docs
 #
-configure_file(mkdocs.yml "${CMAKE_BINARY_DIR}" COPYONLY)
-set(HTML_DOCS_PATH "${CMAKE_CURRENT_BINARY_DIR}/share/doc/revng/html")
-find_program(MKDOCS NAMES mkdocs)
+if(REVNG_BUILD_MKDOCS_HTML)
+  configure_file(mkdocs.yml "${CMAKE_BINARY_DIR}" COPYONLY)
+  set(HTML_DOCS_PATH "${CMAKE_CURRENT_BINARY_DIR}/share/doc/revng/html")
+  find_program(MKDOCS NAMES mkdocs)
+  if("${MKDOCS}" STREQUAL "MKDOCS-NOTFOUND")
+    message(FATAL_ERROR
+            "mkdocs not found, but REVNG_BUILD_MKDOCS_HTML is enabled. Install mkdocs or set -DREVNG_BUILD_MKDOCS_HTML=OFF."
+    )
+  endif()
 
-add_custom_command(
-  OUTPUT share/doc/revng/html/404.html
-  DEPENDS mkdocs.yml
-          copy_share
-          "share/doc/revng/references/abi-definition.md"
-          "share/doc/revng/references/mime-types.md"
-          "share/doc/revng/references/ptml.md"
-          "share/doc/revng/references/cli/revng-common.md"
-          "share/doc/revng/references/cli/revng-artifact.md"
-          "share/doc/revng/references/cli/revng-analyze.md"
-          "share/doc/revng/user-manual/index.md"
-          "share/doc/revng/user-manual/initial-setup.md"
-          "share/doc/revng/user-manual/key-concepts/metaaddress.md"
-          "share/doc/revng/user-manual/key-concepts/model.md"
-          "share/doc/revng/user-manual/key-concepts/artifacts-and-analyses.md"
-          "share/doc/revng/user-manual/tutorial/model-from-scratch.md"
-          "share/doc/revng/user-manual/tutorial/running-analyses.md"
-          "share/doc/revng/what-is-revng.md"
-          "share/doc/revng/index.md"
-          generate-revngModel-tuple-tree-code
-          generate-revngPipeline-tuple-tree-code
-          python/revng/internal/cli/_commands/process_docs_yaml/pipeline.md.tpl
-          python/revng/internal/cli/_commands/process_docs_yaml/artifacts.md.tpl
-          python/revng/internal/cli/_commands/process_docs_yaml/analyses.md.tpl
-          python/revng/internal/cli/_commands/process_docs_yaml/common.md.tpl
-          share/revng/pipelines/revng-pipelines.yml
-  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
-  COMMAND
-    "./bin/revng" process-docs-yaml
-    "${CMAKE_SOURCE_DIR}/python/revng/internal/cli/_commands/process_docs_yaml/pipeline.md.tpl"
-    < "${CMAKE_SOURCE_DIR}/share/revng/pipelines/revng-pipelines.yml" >
-    share/doc/revng/references/pipeline.md
-  COMMAND
-    "./bin/revng" process-docs-yaml
-    "${CMAKE_SOURCE_DIR}/python/revng/internal/cli/_commands/process_docs_yaml/analyses.md.tpl"
-    < "${CMAKE_SOURCE_DIR}/share/revng/pipelines/revng-pipelines.yml" >
-    share/doc/revng/references/analyses.md
-  COMMAND
-    "./bin/revng" process-docs-yaml
-    "${CMAKE_SOURCE_DIR}/python/revng/internal/cli/_commands/process_docs_yaml/artifacts.md.tpl"
-    < "${CMAKE_SOURCE_DIR}/share/revng/pipelines/revng-pipelines.yml" >
-    share/doc/revng/references/artifacts.md
-  COMMAND ${MKDOCS} build --quiet --strict --site-dir mkdocs-output
-  COMMAND rm -rf "${HTML_DOCS_PATH}"
-  COMMAND mv -T mkdocs-output "${HTML_DOCS_PATH}"
-  COMMENT "Generating mkdocs")
-add_custom_target(mkdocs ALL DEPENDS share/doc/revng/html/404.html)
+  add_custom_command(
+    OUTPUT share/doc/revng/html/404.html
+    DEPENDS mkdocs.yml
+            copy_share
+            "share/doc/revng/references/abi-definition.md"
+            "share/doc/revng/references/mime-types.md"
+            "share/doc/revng/references/ptml.md"
+            "share/doc/revng/references/cli/revng-common.md"
+            "share/doc/revng/references/cli/revng-artifact.md"
+            "share/doc/revng/references/cli/revng-analyze.md"
+            "share/doc/revng/user-manual/index.md"
+            "share/doc/revng/user-manual/initial-setup.md"
+            "share/doc/revng/user-manual/key-concepts/metaaddress.md"
+            "share/doc/revng/user-manual/key-concepts/model.md"
+            "share/doc/revng/user-manual/key-concepts/artifacts-and-analyses.md"
+            "share/doc/revng/user-manual/tutorial/model-from-scratch.md"
+            "share/doc/revng/user-manual/tutorial/running-analyses.md"
+            "share/doc/revng/what-is-revng.md"
+            "share/doc/revng/index.md"
+            generate-revngModel-tuple-tree-code
+            generate-revngPipeline-tuple-tree-code
+            python/revng/internal/cli/_commands/process_docs_yaml/pipeline.md.tpl
+            python/revng/internal/cli/_commands/process_docs_yaml/artifacts.md.tpl
+            python/revng/internal/cli/_commands/process_docs_yaml/analyses.md.tpl
+            python/revng/internal/cli/_commands/process_docs_yaml/common.md.tpl
+            share/revng/pipelines/revng-pipelines.yml
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    COMMAND
+      "./bin/revng" process-docs-yaml
+      "${CMAKE_SOURCE_DIR}/python/revng/internal/cli/_commands/process_docs_yaml/pipeline.md.tpl"
+      < "${CMAKE_SOURCE_DIR}/share/revng/pipelines/revng-pipelines.yml" >
+      share/doc/revng/references/pipeline.md
+    COMMAND
+      "./bin/revng" process-docs-yaml
+      "${CMAKE_SOURCE_DIR}/python/revng/internal/cli/_commands/process_docs_yaml/analyses.md.tpl"
+      < "${CMAKE_SOURCE_DIR}/share/revng/pipelines/revng-pipelines.yml" >
+      share/doc/revng/references/analyses.md
+    COMMAND
+      "./bin/revng" process-docs-yaml
+      "${CMAKE_SOURCE_DIR}/python/revng/internal/cli/_commands/process_docs_yaml/artifacts.md.tpl"
+      < "${CMAKE_SOURCE_DIR}/share/revng/pipelines/revng-pipelines.yml" >
+      share/doc/revng/references/artifacts.md
+    COMMAND ${MKDOCS} build --quiet --strict --site-dir mkdocs-output
+    COMMAND rm -rf "${HTML_DOCS_PATH}"
+    COMMAND mv -T mkdocs-output "${HTML_DOCS_PATH}"
+    COMMENT "Generating mkdocs")
+  add_custom_target(mkdocs ALL DEPENDS share/doc/revng/html/404.html)
+endif()
 
 #
 # Gather helper names
@@ -431,10 +580,26 @@ add_custom_target(helper-list ALL
 #
 # Proceed to subdirectories
 #
-add_subdirectory(docs)
+if(REVNG_BUILD_DOCS)
+  add_subdirectory(docs)
+endif()
 add_subdirectory(include)
 add_subdirectory(lib)
-add_subdirectory(python)
-add_subdirectory(tests)
-add_subdirectory(tools)
-add_subdirectory(typescript)
+if(REVNG_BUILD_PYTHON)
+  add_subdirectory(python)
+else()
+  if(REVNG_BUILD_PYTHON_BINDINGS OR REVNG_BUILD_PYTHON_WHEELS)
+    message(FATAL_ERROR
+            "REVNG_BUILD_PYTHON is OFF, but Python wheels/bindings were requested. "
+            "Enable REVNG_BUILD_PYTHON or disable REVNG_BUILD_PYTHON_{BINDINGS,WHEELS}.")
+  endif()
+endif()
+if(REVNG_BUILD_TESTS)
+  add_subdirectory(tests)
+endif()
+if(REVNG_BUILD_TOOLS)
+  add_subdirectory(tools)
+endif()
+if(REVNG_BUILD_TYPESCRIPT)
+  add_subdirectory(typescript)
+endif()

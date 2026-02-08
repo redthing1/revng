@@ -23,8 +23,15 @@ target_link_libraries(revngModel revngSupport)
 
 set(SCHEMA_PATH "${CMAKE_SOURCE_DIR}/include/revng/Model/model-schema.yml")
 set(JSONSCHEMA_PATH "${CMAKE_BINARY_DIR}/model-jsonschema.yml")
-set(TYPESCRIPT_PATH "${CMAKE_BINARY_DIR}/lib/typescript/model.ts")
-set(DOCS_PATH "${CMAKE_BINARY_DIR}/share/doc/revng/references/model.md")
+set(TYPESCRIPT_PATH "")
+if(REVNG_BUILD_TYPESCRIPT)
+  set(TYPESCRIPT_PATH "${CMAKE_BINARY_DIR}/lib/typescript/model.ts")
+endif()
+
+set(DOCS_PATH "")
+if(REVNG_BUILD_MKDOCS_HTML)
+  set(DOCS_PATH "${CMAKE_BINARY_DIR}/share/doc/revng/references/model.md")
+endif()
 target_tuple_tree_generator(
   revngModel
   INSTALL

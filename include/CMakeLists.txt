@@ -5,4 +5,6 @@
 install_pattern("*.h" "*.inc")
 
 # MLIR Clift
-add_subdirectory(revng)
+if(REVNG_BUILD_CLIFT)
+  add_subdirectory(revng)
+endif()
