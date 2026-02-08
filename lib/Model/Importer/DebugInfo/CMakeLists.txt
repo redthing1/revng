@@ -5,15 +5,19 @@
 revng_add_library_internal(revngModelImporterDebugInfo SHARED DwarfImporter.cpp
                            PDBImporter.cpp)
 
-llvm_map_components_to_libnames(
-  LLVM_LIBRARIES
-  Object
-  Support
-  DebugInfoDWARF
-  DebugInfoCodeView
-  DebugInfoMSF
-  DebugInfoPDB
-  BinaryFormat)
+if(LLVM_LINK_LLVM_DYLIB)
+  set(LLVM_LIBRARIES LLVM)
+else()
+  llvm_map_components_to_libnames(
+    LLVM_LIBRARIES
+    Object
+    Support
+    DebugInfoDWARF
+    DebugInfoCodeView
+    DebugInfoMSF
+    DebugInfoPDB
+    BinaryFormat)
+endif()
 
 target_link_libraries(revngModelImporterDebugInfo revngSupport revngModel
                       revngModelPasses ${LLVM_LIBRARIES})

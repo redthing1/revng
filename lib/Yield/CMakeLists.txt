@@ -26,14 +26,18 @@ foreach(CURRENT_ARCHITECTURE AArch64 ARM Mips SystemZ X86)
       "${CURRENT_ARCHITECTURE}Desc")
 endforeach(CURRENT_ARCHITECTURE)
 
-llvm_map_components_to_libnames(
-  LLVM_LIBRARIES
-  Core
-  MC
-  MCDisassembler
-  Support
-  Target
-  ${DISASSEMBLER_ARCHITECTURE_SUPPORT})
+if(LLVM_LINK_LLVM_DYLIB)
+  set(LLVM_LIBRARIES LLVM)
+else()
+  llvm_map_components_to_libnames(
+    LLVM_LIBRARIES
+    Core
+    MC
+    MCDisassembler
+    Support
+    Target
+    ${DISASSEMBLER_ARCHITECTURE_SUPPORT})
+endif()
 
 target_link_libraries(
   revngYield

@@ -11,7 +11,11 @@ revng_add_library_internal(
   Emitter.cpp
   CTokenEmitter.cpp)
 
-llvm_map_components_to_libnames(LLVM_LIBRARIES Support Core)
+if(LLVM_LINK_LLVM_DYLIB)
+  set(LLVM_LIBRARIES LLVM)
+else()
+  llvm_map_components_to_libnames(LLVM_LIBRARIES Support Core)
+endif()
 
 target_link_libraries(revngPTML revngABI revngSupport revngModel
                       ${LLVM_LIBRARIES})

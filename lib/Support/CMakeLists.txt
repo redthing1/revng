@@ -36,29 +36,33 @@ if(NOT LibArchive_FOUND)
   message(FATAL_ERROR "libarchive not found")
 endif()
 
-llvm_map_components_to_libnames(
-  LLVM_LIBRARIES
-  Analysis
-  BitReader
-  BitWriter
-  CodeGen
-  Core
-  GlobalISel
-  InstCombine
-  IPO
-  IRReader
-  Linker
-  Object
-  Passes
-  ScalarOpts
-  Support
-  Target
-  TransformUtils
-  Vectorize
-  X86AsmParser
-  X86CodeGen
-  X86Desc
-  X86Info)
+if(LLVM_LINK_LLVM_DYLIB)
+  set(LLVM_LIBRARIES LLVM)
+else()
+  llvm_map_components_to_libnames(
+    LLVM_LIBRARIES
+    Analysis
+    BitReader
+    BitWriter
+    CodeGen
+    Core
+    GlobalISel
+    InstCombine
+    IPO
+    IRReader
+    Linker
+    Object
+    Passes
+    ScalarOpts
+    Support
+    Target
+    TransformUtils
+    Vectorize
+    X86AsmParser
+    X86CodeGen
+    X86Desc
+    X86Info)
+endif()
 target_link_libraries(revngSupport z zstd ${LibArchive_LIBRARIES}
                       ${LLVM_LIBRARIES})
 

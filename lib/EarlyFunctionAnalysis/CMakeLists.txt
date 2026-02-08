@@ -22,14 +22,18 @@ revng_add_analyses_library_internal(
   SegregateDirectStackAccesses.cpp
   ${GENERATED_IMPLS})
 
-llvm_map_components_to_libnames(
-  LLVM_LIBRARIES
-  Analysis
-  TransformUtils
-  ScalarOpts
-  InstCombine
-  Passes
-  CodeGen)
+if(LLVM_LINK_LLVM_DYLIB)
+  set(LLVM_LIBRARIES LLVM)
+else()
+  llvm_map_components_to_libnames(
+    LLVM_LIBRARIES
+    Analysis
+    TransformUtils
+    ScalarOpts
+    InstCombine
+    Passes
+    CodeGen)
+endif()
 
 target_link_libraries(
   revngEarlyFunctionAnalysis

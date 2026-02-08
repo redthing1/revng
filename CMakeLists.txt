@@ -199,22 +199,29 @@ find_package(LLVM REQUIRED CONFIG)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 link_directories(${LLVM_LIBRARY_DIRS})
-llvm_map_components_to_libnames(
-  LLVM_LIBRARIES
-  core
-  support
-  irreader
-  ScalarOpts
-  linker
-  Analysis
-  object
-  transformutils
-  BitWriter
-  BitReader
-  InstCombine
-  CodeGen
-  Passes
-  TargetParser)
+# Prefer linking to the monolithic LLVM shared library when available.
+# This avoids embedding multiple copies of LLVM into different revng shared
+# libraries (which can cause duplicate cl::opt registrations at runtime).
+if(LLVM_LINK_LLVM_DYLIB)
+  set(LLVM_LIBRARIES LLVM)
+else()
+  llvm_map_components_to_libnames(
+    LLVM_LIBRARIES
+    core
+    support
+    irreader
+    ScalarOpts
+    linker
+    Analysis
+    object
+    transformutils
+    BitWriter
+    BitReader
+    InstCombine
+    CodeGen
+    Passes
+    TargetParser)
+endif()
 
 # MLIR CMake stuff
 #

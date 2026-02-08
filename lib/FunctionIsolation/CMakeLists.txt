@@ -13,7 +13,11 @@ revng_add_analyses_library_internal(
   StripDebugInfoFromHelpers.cpp
   StructInitializers.cpp)
 
-llvm_map_components_to_libnames(LLVM_LIBRARIES TransformUtils)
+if(LLVM_LINK_LLVM_DYLIB)
+  set(LLVM_LIBRARIES LLVM)
+else()
+  llvm_map_components_to_libnames(LLVM_LIBRARIES TransformUtils)
+endif()
 
 target_link_libraries(
   revngFunctionIsolation

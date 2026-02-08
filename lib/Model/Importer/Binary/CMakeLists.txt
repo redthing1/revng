@@ -11,6 +11,10 @@ revng_add_analyses_library_internal(
   PECOFFImporter.cpp
   ImportBinaryAnalysis.cpp)
 
-llvm_map_components_to_libnames(LLVM_LIBRARIES Object)
+if(LLVM_LINK_LLVM_DYLIB)
+  set(LLVM_LIBRARIES LLVM)
+else()
+  llvm_map_components_to_libnames(LLVM_LIBRARIES Object)
+endif()
 target_link_libraries(revngModelImporterBinary revngModel
                       revngModelImporterDebugInfo revngABI ${LLVM_LIBRARIES})

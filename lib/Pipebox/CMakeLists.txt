@@ -5,7 +5,11 @@
 revng_add_library_internal(revngPipebox SHARED Pipebox.cpp LLVMPipe.cpp
                            MLIRPipe.cpp MergeLLVMModules.cpp)
 
-llvm_map_components_to_libnames(LLVM_LIBRARIES Support Core)
+if(LLVM_LINK_LLVM_DYLIB)
+  set(LLVM_LIBRARIES LLVM)
+else()
+  llvm_map_components_to_libnames(LLVM_LIBRARIES Support Core)
+endif()
 target_link_libraries(
   revngPipebox
   ${Python_LIBRARIES}
