@@ -352,9 +352,12 @@ void EnforceABI::handleRegularFunctionCall(const MetaAddress &CallerAddress,
   revng_assert(Call->getDebugLoc());
 
   // Identify the corresponding call site in the model
-  Function *CallerFunction = Call->getParent()->getParent();
-  const efa::ControlFlowGraph
-    &FM = CFGGetter(getMetaAddressOfIsolatedFunction(*CallerFunction));
+  // Use the model entry address for the current function. The LLVM function
+  // being rewritten might not carry a FunctionEntry metaaddress (e.g. after
+  // recreation), but the pipeline CFG map is keyed by model entry addresses.
+  revng_log(EnforceABILog,
+            "Looking up CFG for caller " << CallerAddress.toString() << "\n");
+  const efa::ControlFlowGraph &FM = CFGGetter(CallerAddress);
 
   const efa::BasicBlock *CallerBlock = FM.findBlock(GCBI, Call->getParent());
   revng_assert(CallerBlock != nullptr);
@@ -374,7 +377,38 @@ void EnforceABI::handleRegularFunctionCall(const MetaAddress &CallerAddress,
   bool IsDirect = (Callee != FunctionDispatcher);
   bool IsDynamic = not CallSite->DynamicFunction().empty();
   if (IsDynamic) {
-    Callee = OldToNew.at(Callee);
+    // Dynamic calls are modeled via CallEdge::DynamicFunction() but the lifted
+    // IR typically represents them as calls to `function_dispatcher`.
+    //
+    // Prologue() recreates `dynamic_<name>` stubs (if present in the module) to
+    // have the right prototype, storing the mapping in OldToNew. Resolve the
+    // stub here before consulting OldToNew, otherwise we might end up looking
+    // up `function_dispatcher` and crash with std::out_of_range.
+    Function *OldDynamic = Callee;
+    if (OldDynamic == FunctionDispatcher) {
+      std::string OldName = (Twine("dynamic_") + CallSite->DynamicFunction())
+                              .str();
+      OldDynamic = M.getFunction(OldName);
+    }
+
+    if (OldDynamic != nullptr) {
+      auto It = OldToNew.find(OldDynamic);
+      if (It != OldToNew.end()) {
+        Callee = It->second;
+      } else {
+        // Keep going with an indirect placeholder rather than crashing.
+        // This should not normally happen if prologue() rebuilt the stub.
+        revng_log(EnforceABILog,
+                  "Missing recreated dynamic function for "
+                    << CallSite->DynamicFunction() << "\n");
+        Callee = FunctionDispatcher;
+      }
+    } else {
+      revng_log(EnforceABILog,
+                "Missing dynamic function stub for " << CallSite->DynamicFunction()
+                                                     << "\n");
+      Callee = FunctionDispatcher;
+    }
   } else if (IsDirect) {
     MetaAddress CalleeAddress = CallSite->Destination().notInlinedAddress();
     const model::Function &ModelFunc = Binary.Functions().at(CalleeAddress);
@@ -481,14 +515,52 @@ CallInst *EnforceABI::generateCall(revng::IRBuilder &Builder,
                     PrototypeMDName,
                     Binary.getDefinitionReference(Prototype->key()).toString());
 
-  if (ReturnCSVs.size() != 1) {
-    unsigned I = 0;
-    for (Constant *ReturnCSV : ReturnCSVs) {
-      Builder.CreateStore(Builder.CreateExtractValue(Result, { I }), ReturnCSV);
-      I++;
+  // Store return values back into the CSV globals.
+  //
+  // In the "happy path", the call's LLVM return type matches the callsite
+  // prototype (same number of return registers), so we can just store the call
+  // result(s) into the corresponding return CSVs.
+  //
+  // In practice, analysis can sometimes produce mismatched signatures (e.g. the
+  // callsite expects more return registers than the callee returns). Do not
+  // crash on such inputs: store what we can and leave the extra CSVs untouched
+  // (treat as preserved).
+  if (not ReturnCSVs.empty()) {
+    Type *ResultType = Result->getType();
+    if (ReturnCSVs.size() == 1) {
+      if (not ResultType->isVoidTy())
+        Builder.CreateStore(Result, ReturnCSVs[0]);
+      else
+        revng_log(EnforceABILog,
+                  "Void return but prototype expects 1 return register\n");
+    } else if (auto *ST = dyn_cast<StructType>(ResultType)) {
+      const unsigned NumActual = ST->getNumElements();
+      unsigned NumToStore = ReturnCSVs.size();
+      if (NumToStore > NumActual)
+        NumToStore = NumActual;
+
+      for (unsigned I = 0; I < NumToStore; ++I) {
+        Value *Element = Builder.CreateExtractValue(Result, { I });
+        Builder.CreateStore(Element, ReturnCSVs[I]);
+      }
+
+      if (ReturnCSVs.size() != NumActual) {
+        revng_log(EnforceABILog,
+                  "Return register mismatch: prototype expects "
+                    << ReturnCSVs.size() << " values, call returns " << NumActual
+                    << ". Extra return CSVs left untouched.\n");
+      }
+    } else if (not ResultType->isVoidTy()) {
+      revng_log(EnforceABILog,
+                "Non-aggregate return but prototype expects "
+                  << ReturnCSVs.size()
+                  << " return registers. Storing to first only.\n");
+      Builder.CreateStore(Result, ReturnCSVs[0]);
+    } else {
+      revng_log(EnforceABILog,
+                "Void return but prototype expects " << ReturnCSVs.size()
+                                                     << " return registers\n");
     }
-  } else {
-    Builder.CreateStore(Result, ReturnCSVs[0]);
   }
 
   return Result;
@@ -513,7 +585,7 @@ struct EnforceABIPipe {
                                       InputPreservation::Erase),
                              Contract(kinds::CFG,
                                       0,
-                                      kinds::ABIEnforced,
+                                      kinds::Isolated,
                                       1,
                                       InputPreservation::Preserve) }) };
   }
@@ -521,6 +593,21 @@ struct EnforceABIPipe {
   void run(pipeline::ExecutionContext &EC,
            const revng::pipes::CFGMap &CFGMap,
            pipeline::LLVMContainer &ModuleContainer) {
+    if (EnforceABILog.isEnabled()) {
+      // Sanity-check that CFGs for all requested functions are present before
+      // we start rewriting IR. Missing entries would later crash with a
+      // std::out_of_range from CFGMap::at.
+      for (const pipeline::Target &T :
+           EC.getRequestedTargetsFor(ModuleContainer.name())) {
+        MetaAddress A = MetaAddress::fromString(T.getPathComponents().front());
+        if (not CFGMap.contains(A)) {
+          revng_log(EnforceABILog,
+                    "CFG map is missing entry for requested function "
+                      << A.toString() << "\n");
+        }
+      }
+    }
+
     llvm::legacy::PassManager Manager;
     Manager.add(new pipeline::LoadExecutionContextPass(&EC,
                                                        ModuleContainer.name()));
