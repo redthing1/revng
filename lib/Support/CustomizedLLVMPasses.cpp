@@ -57,16 +57,6 @@ public:
   void getAnalysisUsage(AnalysisUsage &AU) const override {}
 
   bool runOnFunction(Function &F) override {
-    // Temporarily swap out the SROANoArray cl::opt and force it to true, so
-    // that when the SROAPass runs and reads it it doesn't replace loads and
-    // stores to array-typed allocas.
-    // This is a pattern we need to prevent SROA to optimize away, because it
-    // replaces multi-byte memory accesses with many single-byte accesses,
-    // which is detrimental for information we need to recover about
-    // memory accesses in the analyzed binary program.
-    bool OriginalSROANoArrays = SROANoArrays;
-    SROANoArrays = true;
-
     FunctionPassManager FPM;
     FPM.addPass(SROAPass(SROAOptions::PreserveCFG));
 
@@ -76,8 +66,6 @@ public:
     PB.registerFunctionAnalyses(FAM);
 
     FPM.run(F, FAM);
-
-    SROANoArrays = OriginalSROANoArrays;
     return true;
   }
 };
@@ -97,20 +85,7 @@ public:
   InstCombineNoArrays() : InstructionCombiningPass() {}
 
   bool runOnFunction(Function &F) override {
-    // Temporarily swap out the MaxArraySize cl::opt and force it to 0, so that
-    // when the InstCombinePass runs and reads it it doesn't replace loads and
-    // stores to array-typed allocas.
-    // This is a pattern we need to prevent instcombine to optimize away,
-    // because it replaces multi-byte memory accesses with many single-byte
-    // accesses, which is detrimental for information we need to recover about
-    // memory accesses in the analyzed binary program.
-    unsigned OriginalMaxArraySize = MaxArraySize;
-    MaxArraySize = 0;
-
-    InstructionCombiningPass::runOnFunction(F);
-
-    MaxArraySize = OriginalMaxArraySize;
-    return true;
+    return InstructionCombiningPass::runOnFunction(F);
   }
 };
 
