@@ -36,4 +36,13 @@ std::string getComponentsHash() {
   return Result;
 }
 
+void addResourceRoot(llvm::StringRef Path) {
+  // User-provided roots should take precedence over auto-discovered ones.
+  ResourceFinder.prependPath(Path);
+}
+
+void setResourceRoots(const std::vector<std::string> &Roots) {
+  ResourceFinder.setPaths(Roots);
+}
+
 } // namespace revng

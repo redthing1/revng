@@ -163,3 +163,15 @@ std::vector<std::string> PathList::list(llvm::StringRef Path,
 
   return Result;
 }
+
+void PathList::prependPath(llvm::StringRef Path) {
+  SearchPaths.insert(SearchPaths.begin(), Path.str());
+}
+
+void PathList::appendPath(llvm::StringRef Path) {
+  SearchPaths.push_back(Path.str());
+}
+
+void PathList::setPaths(const std::vector<std::string> &Paths) {
+  SearchPaths = Paths;
+}

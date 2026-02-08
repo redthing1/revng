@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/Path.h"
 
@@ -39,6 +40,13 @@ public:
   std::optional<std::string> findFile(llvm::StringRef FileName) const;
   std::vector<std::string> list(llvm::StringRef Path,
                                 llvm::StringRef Suffix) const;
+
+  // Extra search paths for embedding use-cases (custom install layouts, etc.).
+  // User-provided paths are typically expected to take precedence, so prepend
+  // is the most common operation.
+  void prependPath(llvm::StringRef Path);
+  void appendPath(llvm::StringRef Path);
+  void setPaths(const std::vector<std::string> &Paths);
 
 private:
   std::vector<std::string> SearchPaths;
