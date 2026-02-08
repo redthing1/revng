@@ -83,7 +83,7 @@ removeDeadCodeImpl(ASTNode *Node,
     // First of all, we recursively process the `case` nodes contained in the
     // `switch` in order to process the inner portion of the AST
     llvm::SmallVector<size_t> ToRemoveCaseIndex;
-    for (auto &Group : llvm::enumerate(Switch->cases())) {
+    for (auto &&Group : llvm::enumerate(Switch->cases())) {
       unsigned Index = Group.index();
       auto &LabelCasePair = Group.value();
       LabelCasePair.second = rc_recur removeDeadCodeImpl(LabelCasePair.second,

@@ -7,6 +7,8 @@
 // Some snippets of code were adapted from llvm/llvm/lib/Support/TarWriter.cpp
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"

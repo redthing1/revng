@@ -190,7 +190,7 @@ public:
   }
 
   bool isFullSet() const {
-    return Bounds.size() == 1 and Bounds[0].isNullValue();
+    return Bounds.size() == 1 and Bounds[0].isZero();
   }
   bool isEmptySet() const { return Bounds.size() == 0; }
 

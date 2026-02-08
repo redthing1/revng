@@ -41,7 +41,8 @@ public:
 
   std::optional<std::string>
   getPDBFilePath(const llvm::object::COFFObjectFile &TheBinary,
-                 llvm::StringRef BinaryPath);
+                 llvm::StringRef BinaryPath,
+                 const ImporterOptions &Options);
 
   std::optional<std::string> getCachedPDBFilePath(std::string PDBFileID,
                                                   llvm::StringRef PDBFilePath);

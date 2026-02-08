@@ -81,7 +81,7 @@ static std::vector<SetVector<PHINode *>> getPHIEquivalenceClasses(Function &F) {
 
   const auto InitVariableClass = [&PHISameVariableClasses,
                                   &PerClassIncomings](PHINode *PHI) {
-    if (PHISameVariableClasses.findValue(PHI) != PHISameVariableClasses.end())
+    if (PHISameVariableClasses.contains(PHI))
       return;
 
     PHISameVariableClasses.insert(PHI);
@@ -162,19 +162,15 @@ static std::vector<SetVector<PHINode *>> getPHIEquivalenceClasses(Function &F) {
 
   // We want to return the equivalence classes in deterministic order.
   // Sort them according to the RPOT order of their leader.
-  auto ClassEnd = PHISameVariableClasses.end();
   for (BasicBlock *BB : llvm::post_order(&F)) {
     for (PHINode &PHI : BB->phis()) {
-      auto ClassIterator = PHISameVariableClasses.findValue(&PHI);
-      revng_assert(ClassIterator != ClassEnd);
-      if (not ClassIterator->isLeader())
+      revng_assert(PHISameVariableClasses.contains(&PHI));
+      if (PHISameVariableClasses.getLeaderValue(&PHI) != &PHI)
         continue;
 
       // If we found a leader, iterate all over the elements of a class, and
       // build the set of PHINodes that represent that class.
-      auto PHIRange = llvm::make_range(PHISameVariableClasses
-                                         .member_begin(ClassIterator),
-                                       PHISameVariableClasses.member_end());
+      auto PHIRange = PHISameVariableClasses.members(&PHI);
 
       // Things are pushed into Result in deterministic order because we're
       // iterating in post_order over the Function and considering only leader
@@ -185,8 +181,8 @@ static std::vector<SetVector<PHINode *>> getPHIEquivalenceClasses(Function &F) {
       // on the order how elements were inserted in the class, and that in turns
       // is deterministic because we do it in a deterministic order in RPO above
       SetVector<PHINode *> &PHIs = Result.back();
-      for (PHINode *PHI : PHIRange)
-        PHIs.insert(PHI);
+      for (PHINode *MemberPHI : PHIRange)
+        PHIs.insert(MemberPHI);
     }
   }
 

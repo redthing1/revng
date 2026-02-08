@@ -90,8 +90,8 @@ void DotGraph::parseDotImpl(std::ifstream &F, llvm::StringRef EntryName) {
       continue;
     } else {
       if (not ParsedHeader) {
-        if (CurrentLineRef.startswith("digraph")
-            and CurrentLineRef.endswith("{")) {
+        if (CurrentLineRef.starts_with("digraph")
+            and CurrentLineRef.ends_with("{")) {
           ParsedHeader = true;
           continue;
         } else {

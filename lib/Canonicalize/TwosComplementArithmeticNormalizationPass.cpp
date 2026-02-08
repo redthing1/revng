@@ -146,7 +146,7 @@ bool TANP::runOnFunction(llvm::Function &F) {
 
       if ((match(&I, m_Xor(m_Value(Val), m_APInt(Int)))
            or match(&I, m_Xor(m_APInt(Int), m_Value(Val))))
-          and Int->isAllOnesValue()) {
+          and Int->isAllOnes()) {
         BuildBinaryNot.SetInsertPoint(&I);
         NewV = BuildBinaryNot(I.getType(), Val);
 
@@ -224,7 +224,7 @@ bool TANP::runOnFunction(llvm::Function &F) {
           NewV = Builder.CreateSRem(UnaryMinus, Val);
         }
 
-      } else if (Predicate Pred;
+      } else if (llvm::CmpPredicate Pred;
                  match(&I, m_ICmp(Pred, m_Value(Val), m_APInt(Int)))) {
         const auto IntType = Val->getType();
 
@@ -294,7 +294,7 @@ bool TANP::runOnFunction(llvm::Function &F) {
           auto UnaryMinus = BuildUnaryMinus(IntType, *Int);
           Builder.SetInsertPoint(UnaryMinus->getNextNonDebugInstruction());
           NewV = Builder.CreateICmp(Pred, Val, UnaryMinus);
-        } else if (Pred == Predicate::ICMP_EQ and Int->isNullValue()) {
+        } else if (Pred == Predicate::ICMP_EQ and Int->isZero()) {
           BuildBooleanNot.SetInsertPoint(&I);
           NewV = BuildBooleanNot(Val->getType(), Val);
         }

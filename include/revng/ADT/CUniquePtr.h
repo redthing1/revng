@@ -4,6 +4,9 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+#include <memory>
+#include <variant>
+
 #include "revng/ADT/CompilationTime.h"
 #include "revng/Support/Assert.h"
 

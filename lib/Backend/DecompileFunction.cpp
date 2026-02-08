@@ -106,7 +106,7 @@ static bool isStackFrameDecl(const llvm::Value *I) {
   if (not Callee)
     return false;
 
-  return Callee->getName().startswith("revng_stack_frame");
+  return Callee->getName().starts_with("revng_stack_frame");
 }
 
 static bool isCallToCustomOpcode(const llvm::Instruction *I) {
@@ -638,7 +638,8 @@ CCodeGenerator::getModelGEPToken(const llvm::CallInst *Call) const {
     const model::Type &Base = *TypeMap.at(BaseValue)->skipTypedefs();
     const model::Type &Cur = *std::as_const(CurType)->skipTypedefs();
     if (Base != Cur) {
-      BaseValue->dump();
+      BaseValue->print(llvm::errs());
+      llvm::errs() << "\n";
       TypeMap.at(BaseValue)->dump();
       CurType->dump();
       revng_abort("The ModelGEP base type is not coherent with the "

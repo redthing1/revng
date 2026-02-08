@@ -2,6 +2,7 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+#include "llvm/ADT/bit.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Intrinsics.h"
 
@@ -167,7 +168,7 @@ void ArgumentUsageAnalysis::taintAnalysis(Function &FunctionResults,
     if (It != Taint.end()) {
       uint64_t ArgumentSet = It->second;
       while (ArgumentSet) {
-        unsigned Index = llvm::findFirstSet(ArgumentSet);
+        unsigned Index = llvm::countr_zero(ArgumentSet);
         Values.push_back(&TheContext.getArgument(Index));
         ArgumentSet &= (ArgumentSet - 1);
       }

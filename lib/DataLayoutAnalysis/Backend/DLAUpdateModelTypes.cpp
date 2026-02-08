@@ -195,7 +195,7 @@ static bool updateReturnType(model::Binary &Model,
   }
 
   const bool IsScalar = ModelRetVals.size() == 1;
-  for (auto &ModelRet : llvm::enumerate(ModelRetVals)) {
+  for (auto &&ModelRet : llvm::enumerate(ModelRetVals)) {
 
     unsigned int Index = IsScalar ? LayoutTypePtr::fieldNumNone :
                                     ModelRet.index();

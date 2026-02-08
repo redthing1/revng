@@ -306,24 +306,19 @@ mergeIfTopologicallyEq(LayoutTypeSystem &TS,
   LTSN *ChildToKeep = ToKeep.first;
   std::set<LTSN *> ErasedNodes;
   std::set<LTSN *> PreservedNodes;
-  for (EquivalenceClasses<LTSN *>::iterator I = MergeClasses.begin(),
-                                            E = MergeClasses.end();
-       I != E;
-       ++I) {
-
-    if (!I->isLeader())
+  for (const auto *ECV : MergeClasses) {
+    if (!ECV->isLeader())
       continue; // Ignore non-leader sets.
 
     // Decide which node to keep for each equivalence class.
     // This typically depends only on the order of insertions of stuff in the
     // class, so it's deterministic. However, we want the NodeToKeep to always
     // be preserved, so we have to enforce it manually.
-    LTSN *Keep = *MergeClasses.member_begin(I);
+    LTSN *Keep = *MergeClasses.member_begin(*ECV);
     if (MergeClasses.isEquivalent(ChildToKeep, Keep))
       Keep = ChildToKeep;
 
-    for (LTSN *Merge : llvm::make_range(MergeClasses.member_begin(I),
-                                        MergeClasses.member_end())) {
+    for (LTSN *Merge : MergeClasses.members(*ECV)) {
       if (Keep == Merge) {
         PreservedNodes.insert(Keep);
         continue;

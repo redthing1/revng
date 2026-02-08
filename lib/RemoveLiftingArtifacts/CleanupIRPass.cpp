@@ -8,6 +8,7 @@
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include "revng/ABI/ModelHelpers.h"
 #include "revng/Model/Binary.h"
@@ -68,8 +69,10 @@ bool CleanupIRPass::Impl::replaceInstructions(Function &F) {
       } else if (Call->getType()->isPointerTy()) {
         Call->replaceAllUsesWith(PtrToString);
       } else {
-        Call->dump();
-        Call->getFunction()->dump();
+        Call->print(errs());
+        errs() << "\n";
+        Call->getFunction()->print(errs());
+        errs() << "\n";
         revng_abort();
       }
 
@@ -85,7 +88,7 @@ bool CleanupIRPass::Impl::replaceInstructions(Function &F) {
       Builder.SetInsertPointPastAllocas(Call->getFunction());
       Value *AllocatedSize = nullptr;
       if (auto *Callee = getCalledFunction(Call);
-          Callee and Callee->getName().startswith("revng_stack_frame")) {
+          Callee and Callee->getName().starts_with("revng_stack_frame")) {
         AllocatedSize = Call->getArgOperand(0);
       } else {
         model::UpcastableType

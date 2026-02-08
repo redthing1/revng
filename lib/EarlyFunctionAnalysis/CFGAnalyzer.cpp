@@ -193,7 +193,7 @@ OutlinedFunction CFGAnalyzer::outline(const MetaAddress &Entry) {
 
 llvm::FunctionType *CFGAnalyzer::createCallMarkerType(llvm::Module &M) {
   auto &Context = M.getContext();
-  Type *I8Ptr = Type::getInt8PtrTy(Context);
+  Type *I8Ptr = PointerType::get(Context, 0);
   Type *BoolType = Type::getInt1Ty(Context);
   Type *Void = Type::getVoidTy(Context);
   return llvm::FunctionType::get(Void,
@@ -204,7 +204,7 @@ llvm::FunctionType *CFGAnalyzer::createCallMarkerType(llvm::Module &M) {
 llvm::FunctionType *CFGAnalyzer::createRetMarkerType(llvm::Module &M) {
   auto &Context = M.getContext();
   Type *Void = Type::getVoidTy(Context);
-  Type *I8Ptr = Type::getInt8PtrTy(Context);
+  Type *I8Ptr = PointerType::get(Context, 0);
   return llvm::FunctionType::get(Void, { I8Ptr }, false);
 }
 
@@ -439,7 +439,7 @@ void CFGAnalyzer::createIBIMarker(OutlinedFunction *Outlined) {
   //
   LLVMContext &Context = M.getContext();
   auto *IntTy = GCBI.spReg()->getValueType();
-  Type *I8Ptr = Type::getInt8PtrTy(Context);
+  PointerType *I8Ptr = PointerType::get(Context, 0);
   SmallVector<Type *, 16> ArgTypes;
   ArgTypes.resize(PreservedRegistersIndex);
   ArgTypes[CallerBlockIDIndex] = I8Ptr;
@@ -500,7 +500,7 @@ void CFGAnalyzer::createIBIMarker(OutlinedFunction *Outlined) {
 
     // Record the name of the symbol, if any
     using CPN = ConstantPointerNull;
-    Value *SymbolName = CPN::get(Type::getInt8PtrTy(Context));
+    Value *SymbolName = CPN::get(I8Ptr);
     BasicBlock *BB = Term->getParent();
 
     for (Instruction *I : previousInstructions(BB)) {

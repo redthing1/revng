@@ -95,7 +95,7 @@ public:
     Builder.SetInsertPoint(CatchBB);
 
     // Create the StructType necessary for the landingpad
-    PointerType *RetTyPointerType = Type::getInt8PtrTy(Context);
+    PointerType *RetTyPointerType = PointerType::get(Context, 0);
     IntegerType *RetTyIntegerType = Type::getInt32Ty(Context);
     std::vector<Type *> InArgsType{ RetTyPointerType, RetTyIntegerType };
     StructType *RetTyStruct = StructType::create(Context,
@@ -107,7 +107,7 @@ public:
     LandingPadInst *LandingPad = Builder.CreateLandingPad(RetTyStruct, 0);
 
     // Add a catch all (constructed with the null value as clause)
-    auto *NullPtr = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+    auto *NullPtr = ConstantPointerNull::get(PointerType::get(Context, 0));
     LandingPad->addClause(NullPtr);
 
     Builder.CreateBr(UnexpectedPC);

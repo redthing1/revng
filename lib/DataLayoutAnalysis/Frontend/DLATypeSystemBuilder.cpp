@@ -173,7 +173,7 @@ DLATypeSystemLLVMBuilder::getLayoutTypes(const Value &V) {
 
         Results.resize(ExtractedValues.size(), {});
 
-        for (auto &Group : enumerate(ExtractedValues)) {
+        for (auto &&Group : enumerate(ExtractedValues)) {
           const auto &ExtractedSet = Group.value();
           const auto FieldId = Group.index();
           // Inside here we're working on a single field of the struct.
@@ -277,7 +277,7 @@ DLATypeSystemLLVMBuilder::getOrCreateLayoutTypes(const Value &V) {
 
         Results.resize(ExtractedValues.size(), {});
 
-        for (auto &Group : enumerate(ExtractedValues)) {
+        for (auto &&Group : enumerate(ExtractedValues)) {
           const auto &ExtractedSet = Group.value();
           const auto FieldId = Group.index();
           // Inside here we're working on a single field of the struct.

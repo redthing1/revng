@@ -53,7 +53,7 @@ inline llvm::Instruction *instructionByName(llvm::Function *F,
                                             const char *Name) {
   using namespace llvm;
 
-  if (StringRef(Name).startswith("s:")) {
+  if (StringRef(Name).starts_with("s:")) {
     Name = Name + 2;
     for (BasicBlock &BB : *F)
       for (Instruction &I : BB)

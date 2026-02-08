@@ -12,7 +12,7 @@
 
 namespace detail {
 
-inline constexpr auto IntegerEndianness = llvm::support::little;
+inline constexpr auto IntegerEndianness = llvm::endianness::little;
 inline constexpr auto Unaligned = llvm::support::unaligned;
 
 template<TupleLike T>

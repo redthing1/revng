@@ -13,7 +13,6 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Analysis/ConstantFolding.h"
-#include "llvm/Analysis/Interval.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
@@ -64,7 +63,11 @@ inline void eraseFromParent(llvm::Value *V) {
   if (not isa<Function>(V) and not V->use_empty()) {
     dbg << "Can't erase a Value still having uses.\n";
     dbg << "Value:\n  ";
-    V->dump();
+    {
+      llvm::raw_os_ostream Stream(dbg);
+      V->print(Stream);
+      Stream << "\n";
+    }
     dbg << "Users:\n";
     dumpUsers(V);
     revng_abort();
@@ -1558,14 +1561,15 @@ inline void linkModules(std::unique_ptr<llvm::Module> &&Source,
   linkModules(std::move(Source), Destination, std::nullopt);
 }
 
-/// Clone the module with the `Action` function dictating what should be done
-/// for each GlobalValue in the module.
+/// Clone the module with \p ShouldCloneDefinition controlling whether the
+/// definition of each GlobalValue should be cloned. If it returns false, the
+/// cloned module will contain an external reference (declaration) instead.
 /// This requires the source module to be writable in order to guarantee that
 /// the metadata attached to the cloned functions is also preserved.
 std::unique_ptr<llvm::Module>
 cloneFiltered(llvm::Module &Module,
-              llvm::function_ref<llvm::CloneAction(const llvm::GlobalValue *)>
-                Action);
+              llvm::function_ref<bool(const llvm::GlobalValue *)>
+                ShouldCloneDefinition);
 
 // Shortcut for the above with a set of functions to clone
 std::unique_ptr<llvm::Module>

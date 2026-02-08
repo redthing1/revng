@@ -60,7 +60,7 @@ static void demoteOrToAdd(Function &F) {
         const APInt &LHSZeros = computeKnownBits(LHS, DL).Zero;
         const APInt &RHSZeros = computeKnownBits(RHS, DL).Zero;
 
-        if ((~RHSZeros & ~LHSZeros).isNullValue())
+        if ((~RHSZeros & ~LHSZeros).isZero())
           ToReplace.insert(&I);
       }
     }

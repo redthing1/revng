@@ -12,6 +12,8 @@
 #include "revng/Pipes/Kinds.h"
 #include "revng/Pipes/ModelGlobal.h"
 
+#include "llvm/Support/Progress.h"
+
 #include "Backend/DLAMakeModelTypes.h"
 #include "Frontend/DLATypeSystemBuilder.h"
 #include "Middleend/DLAStep.h"

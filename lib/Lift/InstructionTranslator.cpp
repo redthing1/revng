@@ -388,11 +388,11 @@ IT::InstructionTranslator(class LibTcg &LibTcg,
   // * pointer to the disassembled instruction
   // * all the local variables used by this instruction
   auto *NewPCMarkerTy = FT::get(Type::getVoidTy(Context),
-                                { Type::getInt8PtrTy(Context),
+                                { PointerType::get(Context, 0),
                                   Type::getInt64Ty(Context),
                                   Type::getInt32Ty(Context),
                                   Type::getInt32Ty(Context),
-                                  Type::getInt8PtrTy(Context) },
+                                  PointerType::get(Context, 0) },
                                 true);
   NewPCMarker = createIRHelper("newpc",
                                TheModule,
@@ -1544,7 +1544,7 @@ IT::translateOpcode(LibTcgOpcode Opcode,
     auto *Zero = ConstantInt::get(RegisterType, 0);
     Value *Arg = InArguments[0];
     Value *ZeroVal = InArguments[1];
-    CallInst *Ctlz = Builder.CreateBinaryIntrinsic(Intrinsic::ctlz, Arg, One);
+    Value *Ctlz = Builder.CreateBinaryIntrinsic(Intrinsic::ctlz, Arg, One);
     Value *ICmp = Builder.CreateICmp(CmpInst::ICMP_EQ, Arg, Zero);
     Value *Select = Builder.CreateSelect(ICmp, ZeroVal, Ctlz);
     return Values{ Select };
@@ -1555,7 +1555,7 @@ IT::translateOpcode(LibTcgOpcode Opcode,
     auto *Zero = ConstantInt::get(RegisterType, 0);
     Value *Arg = InArguments[0];
     Value *ZeroVal = InArguments[1];
-    CallInst *Ctlz = Builder.CreateBinaryIntrinsic(Intrinsic::ctlz, Arg, One);
+    Value *Ctlz = Builder.CreateBinaryIntrinsic(Intrinsic::ctlz, Arg, One);
     Value *ICmp = Builder.CreateICmp(CmpInst::ICMP_EQ, Arg, Zero);
     Value *Select = Builder.CreateSelect(ICmp, ZeroVal, Ctlz);
     return Values{ Select };
@@ -1566,7 +1566,7 @@ IT::translateOpcode(LibTcgOpcode Opcode,
     auto *Zero = ConstantInt::get(RegisterType, 0);
     Value *Arg = InArguments[0];
     Value *ZeroVal = InArguments[1];
-    CallInst *Cttz = Builder.CreateBinaryIntrinsic(Intrinsic::cttz, Arg, One);
+    Value *Cttz = Builder.CreateBinaryIntrinsic(Intrinsic::cttz, Arg, One);
     Value *ICmp = Builder.CreateICmp(CmpInst::ICMP_EQ, Arg, Zero);
     Value *Select = Builder.CreateSelect(ICmp, ZeroVal, Cttz);
     return Values{ Select };
@@ -1577,7 +1577,7 @@ IT::translateOpcode(LibTcgOpcode Opcode,
     auto *Zero = ConstantInt::get(RegisterType, 0);
     Value *Arg = InArguments[0];
     Value *ZeroVal = InArguments[1];
-    CallInst *Cttz = Builder.CreateBinaryIntrinsic(Intrinsic::cttz, Arg, One);
+    Value *Cttz = Builder.CreateBinaryIntrinsic(Intrinsic::cttz, Arg, One);
     Value *ICmp = Builder.CreateICmp(CmpInst::ICMP_EQ, Arg, Zero);
     Value *Select = Builder.CreateSelect(ICmp, ZeroVal, Cttz);
     return Values{ Select };

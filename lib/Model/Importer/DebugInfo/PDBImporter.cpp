@@ -411,7 +411,7 @@ void PDBImporter::import(const COFFObjectFile &TheBinary,
   if (Options.DebugInfo == DebugInfoLevel::No)
     return;
 
-  auto MaybePDBPath = getPDBFilePath(TheBinary, BinaryPath);
+  auto MaybePDBPath = getPDBFilePath(TheBinary, BinaryPath, Options);
   if (not MaybePDBPath)
     return;
 
@@ -432,7 +432,8 @@ static StringRef getBaseName(StringRef Path) {
 
 std::optional<std::string>
 PDBImporter::getPDBFilePath(const COFFObjectFile &TheBinary,
-                            llvm::StringRef BinaryPath) {
+                            llvm::StringRef BinaryPath,
+                            const ImporterOptions &Options) {
   revng_log(Log, "Looking for the PDB file");
   LoggerIndent Indent(Log);
 
@@ -526,6 +527,8 @@ PDBImporter::getPDBFilePath(const COFFObjectFile &TheBinary,
 
   // Let's try finding it on web with the `fetch-debuginfo` tool.
   // If the `revng` cannot be found, avoid finding debug info.
+  if (not Options.EnableRemoteDebugInfo)
+    return std::nullopt;
   int ExitCode = runFetchDebugInfo(BinaryPath, Log.isEnabled());
   if (ExitCode != 0) {
     revng_log(Log,

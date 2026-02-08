@@ -4,6 +4,8 @@
 
 #include "llvm/Pass.h"
 
+#include "llvm/IR/Module.h"
+
 #include "revng/Support/IRBuilder.h"
 
 using namespace llvm;

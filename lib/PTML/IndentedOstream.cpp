@@ -17,7 +17,7 @@ void IndentedOstream::write_impl(const char *Ptr, size_t Size) {
   llvm::SmallVector<llvm::StringRef> Lines;
   Str.split(Lines, '\n');
 
-  bool EndsInNewLine = Str.endswith("\n");
+  bool EndsInNewLine = Str.ends_with("\n");
   if (EndsInNewLine)
     Lines.pop_back();
 

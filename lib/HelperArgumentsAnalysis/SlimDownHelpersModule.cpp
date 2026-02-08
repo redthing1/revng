@@ -104,9 +104,9 @@ public:
 };
 
 char SlimDownHelpersModule::ID = 0;
-using Register = RegisterPass<SlimDownHelpersModule>;
-static Register X("slim-down-helpers-module",
-                  "Purge non-inline helper functions but keep their "
-                  "declarations alive in a array of pointers.",
-                  true,
-                  true);
+using PassRegistration = llvm::RegisterPass<SlimDownHelpersModule>;
+static PassRegistration X("slim-down-helpers-module",
+                          "Purge non-inline helper functions but keep their "
+                          "declarations alive in a array of pointers.",
+                          true,
+                          true);

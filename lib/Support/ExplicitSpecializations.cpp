@@ -8,5 +8,7 @@
 
 using IntVector = std::vector<unsigned int>;
 
+#if defined(_LIBCPP_VERSION)
 template void
 IntVector::__push_back_slow_path<const unsigned int &>(const unsigned int &);
+#endif

@@ -34,7 +34,8 @@ bool FunctionCallIdentification::runOnModule(llvm::Module &M) {
   // Create function call marker
   // TODO: we could factor this out
   LLVMContext &C = M.getContext();
-  PointerType *Int8PtrTy = Type::getInt8PtrTy(C);
+  // LLVM 21 uses opaque pointers; "i8*" is just "ptr" in address space 0.
+  PointerType *Int8PtrTy = PointerType::get(C, 0);
   auto *Int8NullPtr = ConstantPointerNull::get(Int8PtrTy);
   auto *PCPtrTy = cast<PointerType>(GCBI.pcReg()->getType());
   std::initializer_list<Type *> FunctionArgsTy = {

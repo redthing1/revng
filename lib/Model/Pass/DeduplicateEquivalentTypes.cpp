@@ -192,13 +192,9 @@ private:
       LoggerIndent Indent2(Log);
 
       revng_assert(not Leader->Name().empty());
-      auto LeaderIt = WeakEquivalence.findValue(Leader);
-      revng_assert(LeaderIt->isLeader());
-
       SmallVector<model::TypeDefinition *> ToTest;
-      std::copy(WeakEquivalence.member_begin(LeaderIt),
-                WeakEquivalence.member_end(),
-                std::back_inserter(ToTest));
+      for (model::TypeDefinition *T : WeakEquivalence.members(Leader))
+        ToTest.push_back(T);
 
       auto Compare = [this](model::TypeDefinition *Left,
                             model::TypeDefinition *Right) {
@@ -343,18 +339,21 @@ void model::deduplicateEquivalentTypes(TupleTree<model::Binary> &Model) {
 
   std::set<model::TypeDefinition *> ToErase;
   std::map<DefinitionReference, DefinitionReference> Replacements;
-  for (auto LeaderIt = EquivalentTypes.begin(), End = EquivalentTypes.end();
-       LeaderIt != End;
-       ++LeaderIt) {
-
-    if (!LeaderIt->isLeader())
+  for (const auto *ECV : EquivalentTypes) {
+    if (!ECV->isLeader())
       continue;
 
-    auto LeaderR = Model->getDefinitionReference(LeaderIt->getData()->key());
+    model::TypeDefinition *Leader = ECV->getData();
+    auto LeaderR = Model->getDefinitionReference(Leader->key());
 
-    for (model::TypeDefinition *ToCollapse :
-         make_range(++EquivalentTypes.member_begin(LeaderIt),
-                    EquivalentTypes.member_end())) {
+    auto MemberIt = EquivalentTypes.member_begin(*ECV);
+    auto MemberEnd = EquivalentTypes.member_end();
+    revng_assert(MemberIt != MemberEnd);
+
+    // Skip the leader itself.
+    ++MemberIt;
+    for (; MemberIt != MemberEnd; ++MemberIt) {
+      model::TypeDefinition *ToCollapse = *MemberIt;
       Replacements[Model->getDefinitionReference(ToCollapse->key())] = LeaderR;
       ToErase.insert(ToCollapse);
     }

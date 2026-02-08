@@ -74,7 +74,7 @@ static void explainPipeline(const ContainerToTargetsMap &Targets,
     return;
 
   ExplanationLogger << "Requested targets:\n";
-  indent(ExplanationLogger, 1);
+  ::indent(ExplanationLogger, 1);
 
   if (Requirements.size() <= 1) {
     ExplanationLogger << "Already satisfied\n";
@@ -89,7 +89,7 @@ static void explainPipeline(const ContainerToTargetsMap &Targets,
   ExplanationLogger << "We need to have the following targets at the beginning "
                        "of the steps\n";
 
-  indent(ExplanationLogger, 1);
+  ::indent(ExplanationLogger, 1);
   ExplanationLogger << Requirements.back().ToExecute->getName() << ":\n";
   prettyPrintStatus(Targets, ExplanationLogger, 2);
 
@@ -97,7 +97,7 @@ static void explainPipeline(const ContainerToTargetsMap &Targets,
     StringRef StepName = Requirements[I - 1].ToExecute->getName();
     const ContainerToTargetsMap &TargetsNeeded = Requirements[I - 1].Input;
 
-    indent(ExplanationLogger, 1);
+    ::indent(ExplanationLogger, 1);
     ExplanationLogger << StepName << ":\n";
     prettyPrintStatus(TargetsNeeded, ExplanationLogger, 2);
   }
@@ -400,7 +400,7 @@ Error Runner::run(llvm::StringRef EndingStepName,
 
   if (ExplanationLogger.isEnabled()) {
     ExplanationLogger << "PRODUCED\n";
-    indent(ExplanationLogger, 1);
+    ::indent(ExplanationLogger, 1);
     ExplanationLogger << EndingStepName << ":\n";
     ToExec.back().ToExecute->containers().enumerate().dump(ExplanationLogger,
                                                            2,

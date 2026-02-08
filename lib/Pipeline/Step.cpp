@@ -239,10 +239,10 @@ Step::analyzeGoals(const ContainerToTargetsMap &RequiredGoals) const {
 void Step::explainStartStep(const ContainerToTargetsMap &Targets,
                             size_t Indentation) const {
 
-  indent(ExplanationLogger, Indentation);
+  ::indent(ExplanationLogger, Indentation);
   ExplanationLogger << "Now starting step " << getName()
                     << " with the following inputs:\n";
-  indent(ExplanationLogger, Indentation + 1);
+  ::indent(ExplanationLogger, Indentation + 1);
   ExplanationLogger << getName() << ":\n";
   prettyPrintStatus(Targets, ExplanationLogger, Indentation + 2);
   ExplanationLogger << DoLog;
@@ -251,10 +251,10 @@ void Step::explainStartStep(const ContainerToTargetsMap &Targets,
 void Step::explainEndStep(const ContainerToTargetsMap &Targets,
                           size_t Indentation) const {
 
-  indent(ExplanationLogger, Indentation);
+  ::indent(ExplanationLogger, Indentation);
   ExplanationLogger << "Step " << getName()
                     << " completed\nThe following targets have been produced\n";
-  indent(ExplanationLogger, Indentation + 1);
+  ::indent(ExplanationLogger, Indentation + 1);
   ExplanationLogger << getName() << ":\n";
   prettyPrintStatus(Targets, ExplanationLogger, Indentation + 2);
   ExplanationLogger << DoLog;

@@ -156,7 +156,9 @@ AdvancedValueInfoMFI::applyTransferFunction(Label L,
           }
         }
       } else {
-        NewRange = LVI.getConstantRange(Candidate, L->Source->getTerminator());
+        NewRange = LVI.getConstantRange(Candidate,
+                                        L->Source->getTerminator(),
+                                        false);
       }
 
       if (AVILogger.isEnabled()) {

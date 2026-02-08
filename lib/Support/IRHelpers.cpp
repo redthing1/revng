@@ -301,7 +301,11 @@ void dumpUsers(llvm::Value *V) {
       InstructionUsers.push_back({ F, BB, I });
     } else {
       dbg << "  ";
-      U->dump();
+      {
+        raw_os_ostream Stream(dbg);
+        U->print(Stream);
+        Stream << "\n";
+      }
     }
   }
 
@@ -321,7 +325,11 @@ void dumpUsers(llvm::Value *V) {
     }
 
     dbg << "    ";
-    IU.I->dump();
+    {
+      raw_os_ostream Stream(dbg);
+      IU.I->print(Stream);
+      Stream << "\n";
+    }
   }
 }
 
@@ -566,7 +574,7 @@ void sortModule(llvm::Module &M) {
   llvm::sort(Globals, CompareByName);
 
   for (auto *Global : Globals)
-    M.getGlobalList().push_back(Global);
+    M.insertGlobalVariable(Global);
 
   //
   // Reorder functions
@@ -637,7 +645,7 @@ void linkModules(std::unique_ptr<Module> &&Source,
     for (T &HelperGlobal : GlobalsRange) {
       auto GlobalName = HelperGlobal.getName();
 
-      if (not GlobalName.startswith("llvm.")) {
+      if (not GlobalName.starts_with("llvm.")) {
 
         // Register so we can change its linkage later
         HelperGlobals[GlobalName.str()] = HelperGlobal.getLinkage();
@@ -786,13 +794,12 @@ struct FunctionsMetadata {
 
 std::unique_ptr<llvm::Module>
 cloneFiltered(llvm::Module &Module, std::set<const llvm::Function *> &ToClone) {
-  const auto Filter = [&ToClone](const auto &GlobalSym) {
+  const auto Filter = [&ToClone](const auto &GlobalSym) -> bool {
     if (not llvm::isa<llvm::Function>(GlobalSym))
-      return CloneAction::Clone;
+      return true;
 
     const auto &F = llvm::cast<llvm::Function>(GlobalSym);
-    return ToClone.contains(F) ? CloneAction::Clone :
-                                 CloneAction::MakeDeclaration;
+    return ToClone.contains(F);
   };
 
   return cloneFiltered(Module, Filter);
@@ -800,14 +807,14 @@ cloneFiltered(llvm::Module &Module, std::set<const llvm::Function *> &ToClone) {
 
 std::unique_ptr<llvm::Module>
 cloneFiltered(llvm::Module &Module,
-              llvm::function_ref<llvm::CloneAction(const llvm::GlobalValue *)>
-                Action) {
+              llvm::function_ref<bool(const llvm::GlobalValue *)>
+                ShouldCloneDefinition) {
   llvm::ValueToValueMapTy Map;
 
   FunctionsMetadata::backup(Module);
 
   revng::verify(&Module);
-  auto Cloned = llvm::CloneModule(Module, Map, Action);
+  auto Cloned = llvm::CloneModule(Module, Map, ShouldCloneDefinition);
 
   FunctionsMetadata::restore(*Cloned.get());
   FunctionsMetadata::dropBackup(Module);

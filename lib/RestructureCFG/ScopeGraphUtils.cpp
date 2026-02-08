@@ -55,7 +55,7 @@ static Function *getOrCreateScopeCloserFunction(Module *M) {
 
   // Create the `ScopeCloserMarker` function if it doesn't exists
   if (not Result) {
-    PointerType *BlockAddressTy = Type::getInt8PtrTy(getContext(M));
+    PointerType *BlockAddressTy = PointerType::get(getContext(M), 0);
     auto *FT = FunctionType::get(Type::getVoidTy(getContext(M)),
                                  { BlockAddressTy },
                                  false);

@@ -12,7 +12,12 @@
 // functions that would be otherwise heavy on build times. Make sure this file
 // is included by a header that's included by all the translation units.
 
+// NOTE: `__push_back_slow_path` is a libc++ internal. When building with
+// libstdc++ (e.g. GCC on Fedora) it is not available, so we simply skip these
+// declarations.
+#if defined(_LIBCPP_VERSION)
 extern template void std::vector<unsigned int>::__push_back_slow_path<
   const unsigned int &>(const unsigned int &);
+#endif
 
 #endif

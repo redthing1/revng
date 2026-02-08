@@ -72,9 +72,17 @@ public:
     } else {
       if (It->second != F) {
         dbg << "Same key, different function.\nOriginal:\n";
-        It->second->dump();
+        {
+          llvm::raw_os_ostream Stream(dbg);
+          It->second->print(Stream);
+          Stream << "\n";
+        }
         dbg << "New:\n";
-        F->dump();
+        {
+          llvm::raw_os_ostream Stream(dbg);
+          F->print(Stream);
+          Stream << "\n";
+        }
         revng_abort();
       }
     }

@@ -188,7 +188,7 @@ void Logger::indent(unsigned Level) {
 
 void Logger::unindent(unsigned Level) {
   if (isEnabled()) {
-    revng_assert(IndentLevel - Level >= 0);
+    revng_assert(IndentLevel >= Level);
     IndentLevel -= Level;
   }
 }

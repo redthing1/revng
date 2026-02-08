@@ -15,6 +15,7 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/Progress.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_os_ostream.h"
 #include "llvm/Support/raw_ostream.h"
@@ -455,7 +456,7 @@ void PipelineManager::writeAllPossibleTargets(llvm::raw_ostream &OS) const {
 
     OS << Step.first() << ":\n";
     for (const auto &Container : Step.second) {
-      indent(OS, 1);
+      ::indent(OS, 1);
       OS << Container.first() << ":\n";
       for (const auto &ExpandedTarget : Container.second)
         ExpandedTarget.dump(OS, 2);

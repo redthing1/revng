@@ -134,21 +134,16 @@ static bool removeBackedgesFromSCC(LayoutTypeSystem &TS) {
   if (Log.isEnabled()) {
     revng_log(Log, "Detected components:");
     LoggerIndent Indent{ Log };
-    for (auto I = Components.begin(), E = Components.end(); I != E;
-         ++I) { // Iterate over all of the equivalence sets.
-
-      if (!I->isLeader()) {
-        // Ignore non-leader sets.
+    for (const auto *ECV : Components) { // Iterate over all of the sets.
+      // Ignore non-leader sets.
+      if (!ECV->isLeader())
         continue;
-      }
 
-      revng_log(Log,
-                "Component for Node with ID: "
-                  << (*Components.findLeader(I))->ID);
+      const LTSN *Leader = ECV->getData();
+      revng_log(Log, "Component for Node with ID: " << Leader->ID);
       LoggerIndent MoreIndent{ Log };
       // Loop over members in this set.
-      for (const LTSN *N : llvm::make_range(Components.member_begin(I),
-                                            Components.member_end()))
+      for (const LTSN *N : Components.members(*ECV))
         revng_log(Log, "ID: " << N->ID);
     }
   }
@@ -245,8 +240,8 @@ static bool removeBackedgesFromSCC(LayoutTypeSystem &TS) {
 
       StackEntry NewEntry = {
         .Node = NextChild,
-        .ComponentLeader = Components.findValue(NextChild) != Components.end() ?
-                             *Components.findLeader(NextChild) :
+        .ComponentLeader = Components.contains(NextChild) ?
+                             Components.getLeaderValue(NextChild) :
                              TopComponent,
         .NextToVisitIt = MixedNodeT::child_edge_begin(NextChild)
       };
@@ -299,7 +294,7 @@ static bool removeBackedgesFromSCC(LayoutTypeSystem &TS) {
 
     llvm::SmallSet<EdgeInfo, 8> ToRemove;
 
-    revng_assert(Components.findValue(Root) != Components.end());
+    revng_assert(Components.contains(Root));
     StackEntry Init = { .Node = Root,
                         .ComponentLeader = Components.getLeaderValue(Root),
                         .NextToVisitIt = MixedNodeT::child_edge_begin(Root) };

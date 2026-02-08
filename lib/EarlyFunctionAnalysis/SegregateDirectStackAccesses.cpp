@@ -93,7 +93,7 @@ void SDSAPI::segregateAccesses(Function &F) {
   // type, alias analysis messes up. Hence, we need to ensure that no inttoptr
   // exists when operating on a instruction that directly accesses the stack.
   // Note that this problem will be addressed by opaque pointers in the future.
-  auto *I8PtrTy = Builder.getInt8PtrTy();
+  auto *I8PtrTy = Builder.getPtrTy();
   auto *CE = ConstantExpr::getBitCast(GCBI->spReg(), I8PtrTy->getPointerTo());
   Value *SPI8Ptr = Builder.CreateLoad(I8PtrTy, CE);
 

@@ -112,7 +112,7 @@ bool ptml::HeaderBuilder::printHelpersHeader(const llvm::Module &M) {
     //   present, such as all LLVM's debug intrinsics
     llvm::StringRef FName = F.getName();
     bool ShouldNotBePrinted = F.isTargetIntrinsic()
-                              or FName.startswith("llvm.dbg");
+                              or FName.starts_with("llvm.dbg");
     if (ShouldNotBePrinted)
       continue;
 

@@ -29,13 +29,53 @@ inline ConstPtrIfConst<T, model::TypeDefinition>
 getCallSitePrototype(T &Binary, const llvm::Instruction *Call) {
   revng_assert(llvm::isa<llvm::CallInst>(Call));
 
-  llvm::StringRef SerializedRef = fromStringMetadata(Call, PrototypeMDName);
-  auto Result = model::DefinitionReference::fromString(&Binary, SerializedRef);
+  // Primary source of truth: call-site metadata injected by EnforceABI.
+  if (auto *MD = llvm::dyn_cast_or_null<llvm::MDTuple>(Call->getMetadata(PrototypeMDName)))
+    if (auto *String = llvm::dyn_cast<llvm::MDString>(MD->getOperand(0))) {
+      llvm::StringRef SerializedRef = String->getString();
+      auto Result = model::DefinitionReference::fromString(&Binary, SerializedRef);
+      if constexpr (std::is_const_v<T>) {
+        if (auto *Prototype = Result.getConst())
+          return Prototype;
+      } else {
+        if (auto *Prototype = Result.get())
+          return Prototype;
+      }
+    }
 
-  if constexpr (std::is_const_v<T>)
-    return Result.getConst();
-  else
-    return Result.get();
+  // Fallback: recover from the callee's model metadata when possible.
+  auto *CallI = llvm::cast<llvm::CallInst>(Call);
+  if (llvm::Function *Callee = getCalledFunction(CallI)) {
+    MetaAddress Entry = getMetaAddressMetadata(Callee, FunctionEntryMDName);
+    if (Entry.isValid()) {
+      if constexpr (std::is_const_v<T>) {
+        auto It = Binary.Functions().find(Entry);
+        if (It != Binary.Functions().end())
+          if (auto *Prototype = Binary.prototypeOrDefault(It->prototype()))
+            return Prototype;
+      } else {
+        if (auto *ModelF = Binary.Functions().tryGet(Entry))
+          if (auto *Prototype = Binary.prototypeOrDefault(ModelF->prototype()))
+            return Prototype;
+      }
+    }
+
+    // Dynamic functions are keyed by symbol name in the model.
+    if (FunctionTags::DynamicFunction.isTagOf(Callee)) {
+      llvm::StringRef SymbolName = Callee->getName();
+      (void) SymbolName.consume_front("dynamic_");
+      if (auto *DF = Binary.ImportedDynamicFunctions().tryGet(SymbolName.str()))
+        if (auto *Prototype = Binary.prototypeOrDefault(DF->prototype()))
+          return Prototype;
+    }
+  }
+
+  // Last resort: use the binary default prototype (if any) to keep the
+  // pipeline running even if metadata got dropped by IR transformations.
+  if (auto *Prototype = Binary.defaultPrototype())
+    return Prototype;
+
+  revng_abort("Missing call site prototype and no default prototype is available.");
 }
 
 inline model::Function *llvmToModelFunction(model::Binary &Binary,

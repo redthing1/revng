@@ -31,32 +31,28 @@ struct Endianness {
 template<typename T>
 struct Endianness<T, llvm::object::ELF32LE> {
   static uint64_t read(const uint8_t *Buf) {
-    using namespace llvm::support;
-    return llvm::support::endian::read<T, little, unaligned>(Buf);
+    return llvm::support::endian::read<T, llvm::endianness::little>(Buf);
   }
 };
 
 template<typename T>
 struct Endianness<T, llvm::object::ELF64LE> {
   static uint64_t read(const uint8_t *Buf) {
-    using namespace llvm::support;
-    return llvm::support::endian::read<T, little, unaligned>(Buf);
+    return llvm::support::endian::read<T, llvm::endianness::little>(Buf);
   }
 };
 
 template<typename T>
 struct Endianness<T, llvm::object::ELF32BE> {
   static uint64_t read(const uint8_t *Buf) {
-    using namespace llvm::support;
-    return llvm::support::endian::read<T, big, unaligned>(Buf);
+    return llvm::support::endian::read<T, llvm::endianness::big>(Buf);
   }
 };
 
 template<typename T>
 struct Endianness<T, llvm::object::ELF64BE> {
   static uint64_t read(const uint8_t *Buf) {
-    using namespace llvm::support;
-    return llvm::support::endian::read<T, big, unaligned>(Buf);
+    return llvm::support::endian::read<T, llvm::endianness::big>(Buf);
   }
 };
 

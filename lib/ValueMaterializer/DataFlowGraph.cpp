@@ -80,7 +80,7 @@ std::string aviFormatter(const APInt &Value) {
       return AsAddress.toString();
   }
 
-  if (Value.isAllOnesValue()) {
+  if (Value.isAllOnes()) {
     return "max";
   } else {
     SmallString<32> Result;
@@ -391,7 +391,7 @@ DataFlowGraph::materializeImpl(DataFlowGraph::Node *N,
           Log << "  Node:\n";
           N->dump(Log, "    ");
           Log << "  Operands:\n";
-          for (auto &[Index, Operand] : llvm::enumerate(Operands)) {
+          for (auto &&[Index, Operand] : llvm::enumerate(Operands)) {
             Log << "    Operand " << Index << ": ";
             Operand.dump(Log);
             Log << "\n";

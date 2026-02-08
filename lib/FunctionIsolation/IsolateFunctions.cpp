@@ -17,6 +17,7 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Support/Progress.h"
 #include "llvm/Support/raw_os_ostream.h"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/GlobalDCE.h"
@@ -720,32 +721,35 @@ public:
   std::unique_ptr<llvm::Module> cloneModule(llvm::Function &Function) {
     FunctionUses AnalysisResult = analyzeFunction(Function);
 
-    auto ActionFunction =
-      [this, &Function, &AnalysisResult](const GlobalValue *V) {
-        auto *GV = dyn_cast<llvm::GlobalVariable>(V);
-        if (GV != nullptr) {
+    auto ShouldCloneDefinition =
+      [this, &Function, &AnalysisResult](const GlobalValue *V) -> bool {
+        if (auto *GV = dyn_cast<llvm::GlobalVariable>(V)) {
           if (AnalysisResult.UsedGVs.contains(GV))
-            return CloneAction::Clone;
-          else if (IgnorableGVs.contains(GV) or GV->isDeclaration())
-            return CloneAction::Omit;
-          else
-            return CloneAction::Clone;
+            return true;
+
+          // Keep ignorable globals as declarations so they don't bloat the clone.
+          if (IgnorableGVs.contains(GV) || GV->isDeclaration())
+            return false;
+
+          return true;
         }
 
-        auto *F = dyn_cast<llvm::Function>(V);
-        if (F != nullptr) {
+        if (auto *F = dyn_cast<llvm::Function>(V)) {
           if (F == &Function)
-            return CloneAction::Clone;
-          else if (AnalysisResult.CalledFunctions.contains(F))
-            return CloneAction::MakeDeclaration;
-          else
-            return CloneAction::Omit;
+            return true;
+
+          // Keep direct callees as declarations.
+          if (AnalysisResult.CalledFunctions.contains(F))
+            return false;
+
+          // Omit all other function bodies.
+          return false;
         }
 
-        return CloneAction::Clone;
+        return true;
       };
 
-    auto New = cloneFiltered(Module, ActionFunction);
+    auto New = cloneFiltered(Module, ShouldCloneDefinition);
     revng::verify(New.get());
     return New;
   }

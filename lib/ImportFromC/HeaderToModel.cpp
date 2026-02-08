@@ -158,7 +158,7 @@ DeclVisitor::parseStringAnnotation(const Type &Declaration,
     for (auto &Attribute : Declaration.getAttrs()) {
       if (auto *Cast = llvm::dyn_cast<clang::AnnotateAttr>(Attribute)) {
         llvm::StringRef Annotation = Cast->getAnnotation();
-        if (not Annotation.startswith(Prefix))
+        if (not Annotation.starts_with(Prefix))
           continue;
 
         llvm::StringRef Value = Annotation.substr(Prefix.size());

@@ -15,6 +15,7 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/bit.h"
 #include "llvm/Analysis/MemorySSAUpdater.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/PassManager.h"
@@ -553,7 +554,7 @@ private:
 
   void prepareDispatcher();
 
-  template<typename value_type, unsigned endian>
+  template<typename value_type, llvm::endianness endian>
   void findCodePointers(MetaAddress StartVirtualAddress,
                         const unsigned char *Start,
                         const unsigned char *End);

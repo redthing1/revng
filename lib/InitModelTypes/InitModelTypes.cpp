@@ -5,7 +5,6 @@
 #include <cstddef>
 #include <optional>
 
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -252,7 +251,24 @@ static TypeVector getReturnTypes(const llvm::CallInst *Call,
     return { model::PrimitiveType::makeGeneric(1) };
 
   } else {
-    revng_abort("Unknown non-isolated function");
+    // We can encounter calls to functions that are not isolated and not tagged
+    // as helper/QEMU/etc (e.g. due to imperfect tagging or IR transformations).
+    // Fall back to a conservative inference based on the LLVM return type.
+    revng_log(Log,
+              "Unknown non-isolated function: " << CalledFunc->getName().str()
+                                                << ". Falling back to LLVM "
+                                                   "return type.");
+
+    llvm::Type *ReturnedType = Call->getType();
+    if (ReturnedType->isSingleValueType()) {
+      return { llvmIntToModelType(ReturnedType, Model) };
+    } else if (ReturnedType->isAggregateType()) {
+      for (llvm::Type *Subtype : ReturnedType->subtypes())
+        ReturnTypes.push_back(llvmIntToModelType(Subtype, Model));
+      return ReturnTypes;
+    } else {
+      revng_abort("Unknown value returned by unknown non-isolated function");
+    }
   }
 
   return {};

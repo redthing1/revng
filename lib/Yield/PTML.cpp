@@ -5,6 +5,9 @@
 #include <unordered_map>
 
 #include "llvm/ADT/PostOrderIterator.h"
+// This must be included before headers that pull in revng's GenericGraph
+// utilities, otherwise clang mis-parses parts of LLVM's domtree builder.
+#include "llvm/Support/GenericDomTreeConstruction.h"
 
 #include "revng/ADT/Concepts.h"
 #include "revng/EarlyFunctionAnalysis/CFGHelpers.h"
@@ -271,7 +274,7 @@ struct StatementGraphNode {
   StatementGraphNode(const yield::BasicBlock &BB, const MetaAddress &) :
     Block(&BB) {}
 };
-using StatementGraph = GenericGraph<ForwardNode<StatementGraphNode>>;
+using StatementGraph = GenericGraph<BidirectionalNode<StatementGraphNode>>;
 
 template<>
 struct yield::StatementTraits<StatementGraph::Node *> {

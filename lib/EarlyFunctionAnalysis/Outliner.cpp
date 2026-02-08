@@ -147,8 +147,8 @@ void Outliner::integrateFunctionCallee(CallHandler *TheCallHandler,
     SymbolNamePointer = JumpToSymbol->getArgOperand(0);
   } else {
     using CPN = ConstantPointerNull;
-    Type *I8Ptr = Type::getInt8PtrTy(Context);
-    SymbolNamePointer = CPN::get(Type::getInt8PtrTy(Context));
+    auto *I8PtrTy = PointerType::get(Context, 0);
+    SymbolNamePointer = CPN::get(I8PtrTy);
   }
 
   if (FunctionCall == nullptr)
@@ -382,7 +382,7 @@ Outliner::outlineFunctionInternal(CallHandler *TheCallHandler,
       // BBs to be extracted, so we destroy the blockaddress of the
       // fall-through BB in the `function_call` marker.
       unsigned ArgNo = 0;
-      PointerType *I8PtrTy = Type::getInt8PtrTy(M.getContext());
+      PointerType *I8PtrTy = PointerType::get(M.getContext(), 0);
       Constant *I8NullPtr = ConstantPointerNull::get(I8PtrTy);
       for (Value *Arg : FunctionCall->args()) {
         if (isa<BlockAddress>(Arg)) {
@@ -472,7 +472,7 @@ void Outliner::createAnyPCHooks(CallHandler *TheCallHandler,
     revng::NonDebugInfoCheckingIRBuilder Builder(JumpToAnyPC);
 
     using CPN = ConstantPointerNull;
-    Value *SymbolName = CPN::get(Type::getInt8PtrTy(Context));
+    Value *SymbolName = CPN::get(PointerType::get(Context, 0));
     CallInst *JumpToSymbol = getMarker(BB, "jump_to_symbol");
 
     auto &&[Summary, _] = getCallSiteInfo(OutlinedFunction->Address,

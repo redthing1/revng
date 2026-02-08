@@ -482,8 +482,9 @@ bool restructureCFG(Function &F, ASTTree &AST) {
   }
 
   // Identify SCS regions.
-  llvm::SmallDenseSet<EdgeDescriptor>
-    Backedges = getBackedges(&RootCFG.getEntryNode()).takeSet();
+  auto BackedgesVec = getBackedges(&RootCFG.getEntryNode()).takeVector();
+  llvm::SmallDenseSet<EdgeDescriptor> Backedges(BackedgesVec.begin(),
+                                                BackedgesVec.end());
   revng_log(CombLogger, "Initial Backedges in the graph:");
   for (auto &Backedge : Backedges) {
     LoggerIndent Indent(CombLogger);
@@ -500,7 +501,12 @@ bool restructureCFG(Function &F, ASTTree &AST) {
     addPlainEdge(EdgeDescriptor(Dummy, OriginalTarget));
   }
   Backedges.clear();
-  Backedges = getBackedges(&RootCFG.getEntryNode()).takeSet();
+  {
+    auto BackedgesVec2 = getBackedges(&RootCFG.getEntryNode()).takeVector();
+    llvm::SmallDenseSet<EdgeDescriptor>
+      NewBackedges(BackedgesVec2.begin(), BackedgesVec2.end());
+    Backedges = std::move(NewBackedges);
+  }
 
   // Check that the source node of each retreating edge is a dummy node.
   revng_log(CombLogger, "Backedges in the graph after dummy insertion:");
@@ -685,8 +691,9 @@ bool restructureCFG(Function &F, ASTTree &AST) {
     for (BasicBlockNodeBB *Node : Meta->nodes())
       MetaNodes.insert(Node);
 
-    llvm::SmallDenseSet<EdgeDescriptor>
-      Retreatings = getBackedgesWhiteList(Entry, MetaNodes).takeSet();
+    auto RetreatingsVec = getBackedgesWhiteList(Entry, MetaNodes).takeVector();
+    llvm::SmallDenseSet<EdgeDescriptor> Retreatings(RetreatingsVec.begin(),
+                                                    RetreatingsVec.end());
     std::set<BasicBlockNodeBB *> RetreatingTargets;
     for (const EdgeDescriptor &Retreating : Retreatings) {
       revng_log(CombLogger,
@@ -1231,7 +1238,7 @@ bool restructureCFG(Function &F, ASTTree &AST) {
 
       // For each target of the dispatcher add the edge and add it in the map.
       std::map<BasicBlockNodeBB *, unsigned> SuccessorsIdxMap;
-      for (auto &Group : llvm::enumerate(DeduplicatedRegionSuccessors)) {
+      for (auto &&Group : llvm::enumerate(DeduplicatedRegionSuccessors)) {
         BasicBlockNodeBB *Successor = Group.value();
         unsigned Idx = Group.index();
 
@@ -1355,7 +1362,7 @@ bool restructureCFG(Function &F, ASTTree &AST) {
       revng_log(CombLogger,
                 "Removing from main graph node :" << Node->getNameStr());
       RootCFG.removeNode(Node);
-      llvm::erase_value(RPOT, Node);
+      llvm::erase(RPOT, Node);
     }
 
     LogMetaRegions(OrderedMetaRegions, "MetaRegions before update");

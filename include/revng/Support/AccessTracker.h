@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/MathExtras.h"
 
 #include "revng/Support/Assert.h"
 #include "revng/Support/Debug.h"
@@ -61,7 +62,7 @@ public:
   void access() { Counter |= (0x1 & IsTracking); }
 
   void push() {
-    bool HasLeadingZeroes = llvm::countLeadingZeros(Counter) != 0;
+    bool HasLeadingZeroes = llvm::countl_zero(Counter) != 0;
     revng_assert(HasLeadingZeroes, "More than 8 pushes have been performed");
     Counter = Counter << 1;
   }

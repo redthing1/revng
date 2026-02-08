@@ -354,7 +354,7 @@ static void runnerImplementation(std::function<ReturnT(Args...)> Function,
                  "Return value differs from what happened in the trace");
     }
 
-    if (Return.startswith(PointerPrefix)) {
+    if (Return.starts_with(PointerPrefix)) {
       if constexpr (std::is_pointer_v<ReturnT>) {
         // Check that pointers are NULL or non-NULL
         if (Return == NullPointer) {

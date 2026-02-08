@@ -82,7 +82,7 @@ bool PostLiftVerifyPass::runOnModule(Module &M) {
           CalleeName = Callee->getName();
 
         Good = (CalleeName == "newpc" or CalleeName == "jump_to_symbol"
-                or CalleeName.startswith("helper_")
+                or CalleeName.starts_with("helper_")
                 or CalleeName == "function_call"
                 or CalleeName == "helper_initialize_env"
                 or CalleeName == "revng_abort");

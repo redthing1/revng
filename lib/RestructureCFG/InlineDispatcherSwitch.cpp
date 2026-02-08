@@ -150,7 +150,7 @@ static RecursiveCoroutine<ASTNode *> addToDispatcherSet(ASTTree &AST,
 
     // Perform the inlining over all the cases
     llvm::SmallVector<size_t> ToRemoveCaseIndex;
-    for (auto &Group : llvm::enumerate(Switch->cases())) {
+    for (auto &&Group : llvm::enumerate(Switch->cases())) {
       unsigned Index = Group.index();
       auto &LabelCasePair = Group.value();
       LabelCasePair.second = rc_recur addToDispatcherSet(AST,
@@ -458,7 +458,7 @@ static void processNestedWeavedSwitches(SwitchNode *Switch) {
   // 2) The weaved switch disappeared entirely, so we need to remove the
   //    parent case entirely.
   llvm::SmallVector<size_t> ToRemoveCaseIndex;
-  for (auto &Group : llvm::enumerate(Switch->cases())) {
+  for (auto &&Group : llvm::enumerate(Switch->cases())) {
     unsigned Index = Group.index();
     auto &[LabelSet, Case] = Group.value();
 
@@ -654,7 +654,7 @@ inlineDispatcherSwitchImpl(ASTTree &AST,
     // First of all, we recursively process the `case` nodes contained in the
     // `switch` in order to process the inner portion of the AST
     llvm::SmallVector<size_t> ToRemoveCaseIndex;
-    for (auto &Group : llvm::enumerate(Switch->cases())) {
+    for (auto &&Group : llvm::enumerate(Switch->cases())) {
       unsigned Index = Group.index();
       auto &LabelCasePair = Group.value();
       LabelCasePair
@@ -696,7 +696,7 @@ inlineDispatcherSwitchImpl(ASTTree &AST,
       //    the cases of the switch, we can additionally remove entirely the
       //    dispatcher switch.
       std::set<size_t> ToRemoveCaseIndex;
-      for (auto &Group : llvm::enumerate(Switch->cases())) {
+      for (auto &&Group : llvm::enumerate(Switch->cases())) {
         unsigned Index = Group.index();
         auto &[LabelSet, Case] = Group.value();
 
@@ -846,7 +846,7 @@ simplifySwitchBreakImpl(ASTTree &AST,
     // First of all, we recursively process the `case` nodes contained in the
     // `switch` in order to process the inner portion of the AST
     llvm::SmallVector<size_t> ToRemoveCaseIndex;
-    for (auto &Group : llvm::enumerate(Switch->cases())) {
+    for (auto &&Group : llvm::enumerate(Switch->cases())) {
       unsigned Index = Group.index();
       auto &LabelCasePair = Group.value();
       LabelCasePair.second = rc_recur
@@ -884,7 +884,7 @@ simplifySwitchBreakImpl(ASTTree &AST,
 
       // We do not need to skip the `default` case here, because there is no
       // `default` in first place
-      for (auto &Group : llvm::enumerate(Switch->cases())) {
+      for (auto &&Group : llvm::enumerate(Switch->cases())) {
         unsigned Index = Group.index();
         auto &[LabelSet, Case] = Group.value();
 

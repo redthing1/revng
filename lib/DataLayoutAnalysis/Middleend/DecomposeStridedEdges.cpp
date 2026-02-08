@@ -57,28 +57,34 @@ bool DecomposeStridedEdges::runOnTypeSystem(LayoutTypeSystem &TS) {
       const auto &InToOut = llvm::reverse(StridesTripCounts);
 
       // Actually link the nodes in the chain with the new single-layered
-      // strided edges
-      for (const auto &Group : llvm::enumerate(InToOut)) {
+      // strided edges.
+      //
+      // Note: avoid `llvm::enumerate` here because some iterator adaptors
+      // (notably reverse ranges over zip_first) are not default-constructible
+      // and trigger hard compile errors with libstdc++/C++20 constraints.
+      size_t LayerIndex = 0;
+      for (const auto &Layer : InToOut) {
         // Build the strided offset expression of the new edge
         OffsetExpression OE;
         // Take the Strides and TripCounts from the current layer.
-        const auto &[S, TC] = Group.value();
+        const auto &[S, TC] = Layer;
         OE.Strides.push_back(S);
         OE.TripCounts.push_back(TC);
         // At the last iteration, representing the outermost array, copy the
         // offset as well (all the other iterations will have offset 0)
-        if (Group.index() == NLayers - 1)
+        if (LayerIndex == NLayers - 1)
           OE.Offset = OffsetExpr.Offset;
 
         // Set up the predecessor and successor of the new single-layered
         // strided edge.
-        auto Idx = Group.index();
-        LayoutTypeSystemNode *Pred = NodeChain[Idx + 1];
-        LayoutTypeSystemNode *Succ = NodeChain[Idx];
+        LayoutTypeSystemNode *Pred = NodeChain[LayerIndex + 1];
+        LayoutTypeSystemNode *Succ = NodeChain[LayerIndex];
         // Link them
         auto &&[Tag, New] = TS.addInstanceLink(Pred, Succ, std::move(OE));
         if (Pred != Parent)
           Pred->Size = getFieldSize(Succ, Tag);
+
+        ++LayerIndex;
       }
 
       // Remove the old strided edge

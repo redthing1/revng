@@ -174,7 +174,10 @@ struct ASTForwardNode {
   const ASTNode *getASTNode() { return Node; }
 };
 
-using Node = ForwardNode<ASTForwardNode>;
+// We need predecessor iteration for LLVM's DominatorTree construction (it
+// internally uses `llvm::Inverse<Node *>` graph traits). `ForwardNode` does not
+// provide inverse graph traits, while `BidirectionalNode` does.
+using Node = BidirectionalNode<ASTForwardNode>;
 using ScopeReachabilityGenericGraphTy = GenericGraph<Node>;
 using ASTToNodeMapType = std::map<const ASTNode *, Node *>;
 

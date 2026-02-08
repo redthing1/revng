@@ -127,21 +127,21 @@ static void compileModuleRunImpl(const model::Binary &Binary,
 
   TargetOptions Options = InitTargetOptionsFromCodeGenFlags(TheTriple);
 
-  CodeGenOpt::Level OLvl = CodeGenOpt::Default;
+  CodeGenOptLevel OLvl = CodeGenOptLevel::Default;
   switch (OptLevel) {
   case ' ':
     break;
   case '0':
-    OLvl = CodeGenOpt::None;
+    OLvl = CodeGenOptLevel::None;
     break;
   case '1':
-    OLvl = CodeGenOpt::Less;
+    OLvl = CodeGenOptLevel::Less;
     break;
   case '2':
-    OLvl = CodeGenOpt::Default;
+    OLvl = CodeGenOptLevel::Default;
     break;
   case '3':
-    OLvl = CodeGenOpt::Aggressive;
+    OLvl = CodeGenOptLevel::Aggressive;
     break;
   default:
     revng_abort("Wrong Optimization Level");
@@ -179,7 +179,7 @@ static void compileModuleRunImpl(const model::Binary &Binary,
   bool Err = Target->addPassesToEmitFile(PM,
                                          Output,
                                          nullptr,
-                                         CGFT_ObjectFile,
+                                         CodeGenFileType::ObjectFile,
                                          true);
   revng_assert(not Err);
 

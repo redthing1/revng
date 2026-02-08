@@ -8,6 +8,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Analysis/CallGraph.h"
+#include "llvm/Support/Progress.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
 #include "revng/ADT/Queue.h"

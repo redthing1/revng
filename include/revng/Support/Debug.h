@@ -17,7 +17,14 @@
 extern std::ostream &dbg;
 extern size_t MaxLoggerNameLength;
 
+// GCC rejects GNU-style trailing attributes on some in-class template method
+// definitions. Many revng headers use `debug_function` in that position, so on
+// GCC we currently disable the attribute rather than rewriting all call-sites.
+#if defined(__clang__)
 #define debug_function __attribute__((used, noinline))
+#else
+#define debug_function
+#endif
 
 /// Emits \p Indentation space pairs
 template<typename Stream>

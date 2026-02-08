@@ -422,7 +422,7 @@ public:
 
             const auto &[StackLayout, New] = Builder.getOrCreateLayoutType(C);
             if (Function *Called = C->getCalledFunction();
-                Called and Called->getName().startswith("revng_stack_frame")) {
+                Called and Called->getName().starts_with("revng_stack_frame")) {
               auto *StackSize = cast<ConstantInt>(C->getArgOperand(0));
               StackLayout->Size = StackSize->getZExtValue();
               StackLayout->NonScalar = true;
@@ -548,9 +548,14 @@ public:
             } else {
               // Type representing the return type
               revng_assert(not C->getType()->isIntegerTy(1));
-              LayoutTypeSystemNode *RetTy = Callee ?
-                                              Builder.getLayoutType(Callee) :
-                                              TS.createArtificialLayoutType();
+              LayoutTypeSystemNode *RetTy = nullptr;
+              if (Callee) {
+                const auto &[Node, NewNode] = Builder.getOrCreateLayoutType(Callee);
+                Changed |= NewNode;
+                RetTy = Node;
+              } else {
+                RetTy = TS.createArtificialLayoutType();
+              }
               const auto &[CType, NewC] = Builder.getOrCreateLayoutType(C);
               Changed |= NewC;
               Changed |= Builder.TS.addEqualityLink(RetTy, CType).second;

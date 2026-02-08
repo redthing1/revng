@@ -77,7 +77,7 @@ void model::purgeInvalidTypes(TupleTree<model::Binary> &Model) {
       // Note: changing the key of an element in a sorted container shouldn't
       // be allowed. However, it should be fine in this case, since we
       // preserve the ordering.
-      for (auto &[Index, Field] : llvm::enumerate(Union.Fields()))
+      for (auto &&[Index, Field] : llvm::enumerate(Union.Fields()))
         Field.Index() = Index;
       revng_assert(Union.Fields().isSorted());
     }

@@ -646,7 +646,7 @@ public:
   }
 
   void removeDefault() {
-    for (auto &Group : llvm::enumerate(LabelCaseVec)) {
+    for (auto &&Group : llvm::enumerate(LabelCaseVec)) {
       unsigned Index = Group.index();
       const auto &[LabelSet, Successor] = Group.value();
 

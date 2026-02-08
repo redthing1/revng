@@ -139,16 +139,15 @@ auto &&get(Edge<Node, EdgeLabel> &&E) {
 
 namespace std {
 template<typename Node, typename EdgeLabel>
-struct std::tuple_size<Edge<Node, EdgeLabel>>
-  : std::integral_constant<size_t, 2> {};
+struct tuple_size<Edge<Node, EdgeLabel>> : integral_constant<size_t, 2> {};
 
 template<typename Node, typename EdgeLabel>
-struct std::tuple_element<0, Edge<Node, EdgeLabel>> {
+struct tuple_element<0, Edge<Node, EdgeLabel>> {
   using type = Node *;
 };
 
 template<typename Node, typename EdgeLabel>
-struct std::tuple_element<1, Edge<Node, EdgeLabel>> {
+struct tuple_element<1, Edge<Node, EdgeLabel>> {
   using type = EdgeLabel;
 };
 

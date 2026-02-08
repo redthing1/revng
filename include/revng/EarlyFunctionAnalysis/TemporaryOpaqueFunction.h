@@ -48,7 +48,11 @@ public:
             llvm::Function *F = I->getParent()->getParent();
             dbg << "In function " << F->getName().str() << ": ";
           }
-          U->dump();
+          {
+            llvm::raw_os_ostream Stream(dbg);
+            U->print(Stream);
+            Stream << "\n";
+          }
         }
 
         revng_abort("Cannot destroy TemporaryOpaqueFunction: it still has "

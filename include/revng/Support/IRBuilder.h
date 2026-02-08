@@ -28,11 +28,10 @@ public:
   virtual void
   InsertHelper(llvm::Instruction *I,
                const llvm::Twine &Name,
-               llvm::BasicBlock *BB,
                llvm::BasicBlock::iterator InsertPt) const override {
     checkImpl(); // < this dance is performed so we can inject these checks here
 
-    return llvm::IRBuilderDefaultInserter::InsertHelper(I, Name, BB, InsertPt);
+    return llvm::IRBuilderDefaultInserter::InsertHelper(I, Name, InsertPt);
   }
 
   void checkImpl() const;

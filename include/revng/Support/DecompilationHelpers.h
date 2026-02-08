@@ -41,12 +41,12 @@ inline bool mayReadMemory(const llvm::Instruction &I) {
   // We have to hardcode revng_call_stack_arguments and revng_stack_frame
   // because SegregateStackAccesses has to mark them as functions that read
   // inaccessible memory, in order to prevent some LLVM optimizations.
-  if (llvm::Function *Callee = getCalledFunction(Call)) {
-    llvm::StringRef Name = Callee->getName();
-    if (Name.startswith("revng_call_stack_arguments")
-        or Name.startswith("revng_stack_frame"))
-      return false;
-  }
+    if (llvm::Function *Callee = getCalledFunction(Call)) {
+      llvm::StringRef Name = Callee->getName();
+      if (Name.starts_with("revng_call_stack_arguments")
+          or Name.starts_with("revng_stack_frame"))
+        return false;
+    }
 
   // In all the other cases we can just use memory effects.
   auto CallMemoryEffects = Call->getMemoryEffects();
@@ -108,7 +108,7 @@ inline bool isCallStackArgumentDecl(const llvm::Value *I) {
   if (not Callee)
     return false;
 
-  return Callee->getName().startswith("revng_call_stack_arguments");
+  return Callee->getName().starts_with("revng_call_stack_arguments");
 }
 
 inline bool isArtificialAggregateLocalVarDecl(const llvm::Value *I) {

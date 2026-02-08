@@ -4,6 +4,7 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+#include <cmath>
 #include <map>
 #include <string>
 #include <vector>
@@ -144,7 +145,7 @@ public:
 
   double variance() const { return ((N > 1) ? NewS / (N - 1) : 0.0); }
 
-  double standardDeviation() const { return sqrt(variance()); }
+  double standardDeviation() const { return std::sqrt(variance()); }
 
   double sum() const { return Sum; }
 

@@ -124,7 +124,7 @@ void StepManager::run(LayoutTypeSystem &TS) {
   if (DLADumpDot.isEnabled())
     TS.dumpDotOnFile("type-system-0.dot", true);
 
-  llvm::Task T{ Schedule.size(), "StepManager::run" };
+  llvm::Task T(Schedule.size(), "StepManager::run");
   for (auto &S : Schedule) {
     T.advance(getStepNameFromID(S->getStepID()));
     S->runOnTypeSystem(TS);

@@ -138,7 +138,7 @@ bool FoldModelGEP::runOnFunction(llvm::Function &F) {
         }
 
         llvm::SmallVector<llvm::Value *, 8> Args;
-        for (auto &Group : llvm::enumerate(CallToFold->args())) {
+        for (auto &&Group : llvm::enumerate(CallToFold->args())) {
           llvm::Value *Arg = Group.value();
           // We just ignore the argument representing the array index for the
           // ModelGEPRef.

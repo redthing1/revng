@@ -188,5 +188,5 @@ public:
 
 char SplitOverflowIntrinsicsPass::ID;
 
-using Register = RegisterPass<SplitOverflowIntrinsicsPass>;
-static Register R("split-overflow-intrinsics", "", false, false);
+using PassRegistration = llvm::RegisterPass<SplitOverflowIntrinsicsPass>;
+static PassRegistration R("split-overflow-intrinsics", "", false, false);

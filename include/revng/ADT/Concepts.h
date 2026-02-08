@@ -7,9 +7,13 @@
 #include <array>
 #include <concepts>
 #include <iterator>
+#include <ranges>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 //
 // Concepts to simplify working with tuples.

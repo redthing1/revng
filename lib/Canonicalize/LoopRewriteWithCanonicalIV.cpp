@@ -21,6 +21,43 @@ using namespace llvm;
 
 static Logger Log{ "loop-rewrite-with-canonical-induction-variable" };
 
+// LLVM removed `getInsertPointForUses` from LoopUtils. We only need the subset
+// used here: pick an insertion point that is valid for PHI operands by
+// inserting in the nearest common dominator of the incoming blocks that use
+// the operand.
+static Instruction *getInsertPointForUses(Instruction *User,
+                                          Value *Operand,
+                                          DominatorTree *DT,
+                                          LoopInfo *LI) {
+  (void)LI;
+
+  if (auto *PHI = dyn_cast<PHINode>(User)) {
+    SmallVector<BasicBlock *, 4> IncomingBlocks;
+    IncomingBlocks.reserve(PHI->getNumIncomingValues());
+    for (unsigned I = 0, E = PHI->getNumIncomingValues(); I != E; ++I) {
+      if (PHI->getIncomingValue(I) == Operand)
+        IncomingBlocks.push_back(PHI->getIncomingBlock(I));
+    }
+
+    // Fallback: insert after the PHIs in the same block.
+    if (IncomingBlocks.empty())
+      return PHI->getParent()->getFirstNonPHI();
+
+    BasicBlock *Dom = IncomingBlocks.front();
+    for (BasicBlock *BB : llvm::ArrayRef(IncomingBlocks).drop_front())
+      Dom = DT->findNearestCommonDominator(Dom, BB);
+
+    if (Dom == nullptr)
+      Dom = IncomingBlocks.front();
+
+    if (Instruction *T = Dom->getTerminator())
+      return T;
+    return Dom->getFirstNonPHI();
+  }
+
+  return User;
+}
+
 class LoopRewriteIV {
 public:
   LoopRewriteIV(LoopInfo &LI) : LI(LI) {}

@@ -30,11 +30,12 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Linker/Linker.h"
+#include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Progress.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_os_ostream.h"
-#include "llvm/Transforms/IPO.h"
+#include "llvm/Transforms/IPO/GlobalDCE.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/DCE.h"
@@ -158,8 +159,14 @@ CodeGenerator::CodeGenerator(const RawBinaryView &RawBinary,
   HelpersModule = parseIR(Context, Helpers);
   revng_assert(HelpersModule->getGlobalVariable("cpu_loop_exiting") != nullptr);
   TheModule->setDataLayout(HelpersModule->getDataLayout());
+  TheModule->setTargetTriple(HelpersModule->getTargetTriple());
 
   EarlyLinkedModule = parseIR(Context, EarlyLinked);
+  // `EarlyLinkedModule` is produced by clang and might omit details (e.g. i128
+  // alignment) that are present in the helper bitcode shipped with revng.
+  // Ensure all linked modules agree on the data layout/triple.
+  EarlyLinkedModule->setDataLayout(TheModule->getDataLayout());
+  EarlyLinkedModule->setTargetTriple(TheModule->getTargetTriple());
   // TODO: do this at compile time
   for (llvm::Function &F : *EarlyLinkedModule) {
     if (F.isIntrinsic())
@@ -658,8 +665,19 @@ void CodeGenerator::translate(LibTcg &LibTcg,
   legacy::PassManager PostInstCombinePM;
   PostInstCombinePM.add(new LoadModelWrapperPass(Model));
   PostInstCombinePM.add(new PruneRetSuccessors);
-  PostInstCombinePM.add(createGlobalDCEPass());
   PostInstCombinePM.run(*TheModule);
+
+  // LLVM 21 dropped the legacy pass-creator helpers for some IPO passes.
+  // Run GlobalDCE using the new pass manager after our legacy passes.
+  {
+    PassBuilder PB;
+    ModuleAnalysisManager MAM;
+    PB.registerModuleAnalyses(MAM);
+
+    ModulePassManager MPM;
+    MPM.addPass(GlobalDCEPass());
+    MPM.run(*TheModule, MAM);
+  }
 
   T.advance("Finalize jump targets", true);
   JumpTargets.finalizeJumpTargets();

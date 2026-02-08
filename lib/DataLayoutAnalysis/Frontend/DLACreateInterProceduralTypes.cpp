@@ -165,17 +165,29 @@ bool TSBuilder::createInterproceduralTypes(llvm::Module &M,
                          or isa<PointerType>(ActualArg->getType()));
 
             // Avoid creating layouts for pointers to functions.
-            if (isPointerToFunctionExpression(ActualArg))
+            if (isPointerToFunctionExpression(ActualArg)) {
+              // Still advance the formal argument index to keep it in sync with
+              // the actual arguments.
+              ++ArgNo;
               continue;
+            }
+
+            // The analysis does not currently model varargs. For calls where the
+            // callee has fewer formal arguments than actual arguments, just
+            // stop once we've exhausted the formal parameter list.
+            if (ArgNo >= Callee->arg_size())
+              break;
 
             auto ActualTypes = getOrCreateLayoutTypes(*ActualArg);
 
             // Create the layout for the formal arguments.
             Value *FormalArg = Callee->getArg(ArgNo);
+            if (FormalArg == nullptr)
+              break;
             revng_assert(isa<IntegerType>(FormalArg->getType())
                          or isa<PointerType>(FormalArg->getType()));
             auto FormalTypes = getOrCreateLayoutTypes(*FormalArg);
-            revng_assert(1ULL == ActualTypes.size() == FormalTypes.size());
+            revng_assert(ActualTypes.size() == FormalTypes.size());
 
             auto FieldNum = FormalTypes.size();
             if (not isa<ConstantInt>(ActualArg)) {

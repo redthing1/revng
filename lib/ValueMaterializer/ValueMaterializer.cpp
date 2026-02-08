@@ -54,7 +54,7 @@ void ValueMaterializer::computeOracleConstraints() {
     for (DataFlowGraph::Node *Node : DataFlowGraph.nodes())
       if (auto *I = dyn_cast<Instruction>(V))
         if (I->getType()->isIntegerTy())
-          OracleConstraints[I] = LVI.getConstantRange(I, Context);
+          OracleConstraints[I] = LVI.getConstantRange(I, Context, false);
     break;
 
   case Oracle::AdvancedValueInfo:

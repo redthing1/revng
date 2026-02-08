@@ -125,7 +125,7 @@ inline constexpr const char *toString(Values V) {
   }
 }
 
-inline constexpr Values fromString(llvm::StringRef String) {
+inline Values fromString(llvm::StringRef String) {
   if (String == "Generic32") {
     return Generic32;
   } else if (String == "Generic64") {
@@ -503,7 +503,12 @@ public:
 
 private:
   constexpr explicit MetaAddress(Tombstone) :
-    PlainMetaAddress{ .Address = 1 } {}
+    PlainMetaAddress{
+      .Epoch = 0,
+      .AddressSpace = 0,
+      .Type = MetaAddressType::Invalid,
+      .Address = 1,
+    } {}
 
   /// @}
 
@@ -912,7 +917,7 @@ public:
   }
 
 public:
-  constexpr MetaAddress pageStart() const {
+  MetaAddress pageStart() const {
     revng_check(isValid());
     return toGeneric() - (Address % 4096);
   }

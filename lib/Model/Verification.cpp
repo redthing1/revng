@@ -554,7 +554,7 @@ static RecursiveCoroutine<bool> verifyImpl(VerifyHelper &VH,
     rc_return VH.fail("Union must have at least one field.", T);
 
   llvm::SmallSet<llvm::StringRef, 8> Names;
-  for (auto &Group : llvm::enumerate(T.Fields())) {
+  for (auto Group : llvm::enumerate(T.Fields())) {
     auto &Field = Group.value();
     uint64_t ExpectedIndex = Group.index();
 
@@ -626,7 +626,7 @@ static RecursiveCoroutine<bool> verifyImpl(VerifyHelper &VH,
   }
 
   llvm::SmallSet<llvm::StringRef, 8> Names;
-  for (auto &Group : llvm::enumerate(T.Arguments())) {
+  for (auto Group : llvm::enumerate(T.Arguments())) {
     auto &Argument = Group.value();
     uint64_t ArgPos = Group.index();
 

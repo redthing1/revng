@@ -8,6 +8,8 @@
 #include "revng/Support/IRHelpers.h"
 #include "revng/Support/ResourceFinder.h"
 
+#include "llvm/Support/Progress.h"
+
 #include "CodeGenerator.h"
 #include "PostLiftVerifyPass.h"
 
@@ -86,7 +88,7 @@ bool LiftPass::runOnModule(llvm::Module &M) {
                           Model,
                           Paths.LibHelpers,
                           Paths.EarlyLinked,
-                          model::Architecture::x86_64);
+                          Model->Architecture());
 
   std::optional<uint64_t> EntryPointAddressOptional;
   if (EntryPointAddress.getNumOccurrences() != 0)

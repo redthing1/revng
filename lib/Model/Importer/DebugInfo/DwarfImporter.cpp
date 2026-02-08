@@ -7,7 +7,7 @@
 
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/EquivalenceClasses.h"
-#include "llvm/ADT/Triple.h"
+#include "llvm/TargetParser/Triple.h"
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include "llvm/DebugInfo/DWARF/DWARFDie.h"
@@ -418,8 +418,11 @@ private:
         return *MaybeString;
       }
     } else if (auto MaybeOrigin = Die.find(DW_AT_abstract_origin)) {
-      DWARFDie Origin = Context.getDIEForOffset(*MaybeOrigin->getAsReference());
-      return getName(Origin);
+      if (auto OriginOffset = MaybeOrigin->getAsReferenceUVal()) {
+        DWARFDie Origin = Context.getDIEForOffset(*OriginOffset);
+        return getName(Origin);
+      }
+      return {};
     } else {
       return {};
     }
@@ -435,9 +438,8 @@ private:
     // Check if the specification of this subprogram defines it.
     auto SpecificationAttribute = Die.find(DW_AT_specification);
     if (SpecificationAttribute) {
-      if (SpecificationAttribute->getAsReference()) {
-        auto DieOffset = *(SpecificationAttribute->getAsReference());
-        DWARFDie SpecificationDie = CU.getDIEForOffset(DieOffset);
+      if (auto DieOffset = SpecificationAttribute->getAsReferenceUVal()) {
+        DWARFDie SpecificationDie = CU.getDIEForOffset(*DieOffset);
         if (SpecificationDie.find(DW_AT_noreturn))
           return true;
       }
@@ -451,12 +453,18 @@ private:
       if (Type->getForm() == llvm::dwarf::DW_FORM_GNU_ref_alt) {
         rc_return Importer.findType({ AltIndex, Type->getRawUValue() }).copy();
       } else {
-        DWARFDie InnerDie = Context.getDIEForOffset(*Type->getAsReference());
-        rc_return rc_recur resolveType(InnerDie, false);
+        if (auto Offset = Type->getAsReferenceUVal()) {
+          DWARFDie InnerDie = Context.getDIEForOffset(*Offset);
+          rc_return rc_recur resolveType(InnerDie, false);
+        }
+        rc_return model::UpcastableType::empty();
       }
     } else if (auto MaybeOrigin = Die.find(DW_AT_abstract_origin)) {
-      DWARFDie Origin = Context.getDIEForOffset(*MaybeOrigin->getAsReference());
-      rc_return rc_recur makeType(Origin);
+      if (auto OriginOffset = MaybeOrigin->getAsReferenceUVal()) {
+        DWARFDie Origin = Context.getDIEForOffset(*OriginOffset);
+        rc_return rc_recur makeType(Origin);
+      }
+      rc_return model::UpcastableType::empty();
     } else {
       rc_return model::UpcastableType::empty();
     }
@@ -1254,23 +1262,25 @@ void DwarfImporter::import(llvm::MemoryBufferRef Buffer,
                     << DebugFile);
       }
 
-      auto DebugFilePath = findDebugInfoFileByName(FileName, DebugFile, ELF);
-      if (!DebugFilePath) {
-        int ExitCode = runFetchDebugInfo(Filepath, DILogger.isEnabled());
-        if (ExitCode != 0) {
-          revng_log(DILogger,
-                    "Failed to find debug info with `revng model "
-                    "fetch-debuginfo`.");
-        } else {
-          DebugFilePath = findDebugInfoFileByName(FileName, DebugFile, ELF);
-          if (DebugFilePath)
-            PerformImport(*DebugFilePath, DebugFile);
-        }
-      } else {
-        PerformImport(*DebugFilePath, DebugFile);
-      }
-    }
-  }
+	      auto DebugFilePath = findDebugInfoFileByName(FileName, DebugFile, ELF);
+	      if (!DebugFilePath) {
+	        if (Options.EnableRemoteDebugInfo) {
+	          int ExitCode = runFetchDebugInfo(Filepath, DILogger.isEnabled());
+	          if (ExitCode != 0) {
+	            revng_log(DILogger,
+	                      "Failed to find debug info with `revng model "
+	                      "fetch-debuginfo`.");
+	          } else {
+	            DebugFilePath = findDebugInfoFileByName(FileName, DebugFile, ELF);
+	            if (DebugFilePath)
+	              PerformImport(*DebugFilePath, DebugFile);
+	          }
+	        }
+	      } else {
+	        PerformImport(*DebugFilePath, DebugFile);
+	      }
+	    }
+	  }
 
   T.advance("Parsing debug info in the binary itself", true);
   import(*MaybeBinary->get(), FileName, Options.BaseAddress);
@@ -1390,10 +1400,10 @@ inline void detectAliases(const llvm::object::ObjectFile &ELF,
   for (auto AliasesIt = Aliases.begin(), E = Aliases.end(); AliasesIt != E;
        ++AliasesIt) {
     llvm::SmallVector<std::string, 4> CurrentAliases;
-    if (AliasesIt->isLeader()) {
+    if ((*AliasesIt)->isLeader()) {
       SmallVector<std::string, 4> UnprototypedFunctionsNames;
       model::UpcastableType Prototype;
-      for (auto AliasSetIt = Aliases.member_begin(AliasesIt);
+      for (auto AliasSetIt = Aliases.member_begin(**AliasesIt);
            AliasSetIt != Aliases.member_end();
            ++AliasSetIt) {
 

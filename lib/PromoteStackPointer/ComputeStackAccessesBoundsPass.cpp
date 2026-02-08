@@ -141,7 +141,9 @@ bool ComputeStackAccessesBoundsPass::runOnFunction(Function &F) {
         //       that ensures the upper bound is actually used.
         //       Eventually we'll need to deal with this incoherence and either
         //       restrict the usage of LVI or drop it entirely.
-        const auto &BoundRange = LVI.getConstantRange(V, cast<CallInst>(User));
+        const auto &BoundRange = LVI.getConstantRange(V,
+                                                      cast<CallInst>(User),
+                                                      false);
         revng_log(Log, "LazyValueInfo says " << dumpToString(BoundRange));
 
         if (not BoundRange.isFullSet() and not BoundRange.isWrappedSet()) {

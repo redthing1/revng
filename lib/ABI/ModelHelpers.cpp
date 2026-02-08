@@ -281,7 +281,7 @@ getStrongModelInfo(const llvm::Instruction *Inst, const model::Binary &Model) {
         return llvmToModelFunction(Model, *Inst->getParent()->getParent());
       };
 
-      if (FuncName.startswith("revng_call_stack_arguments")) {
+      if (FuncName.starts_with("revng_call_stack_arguments")) {
         auto *Arg0Operand = Call->getArgOperand(0);
         auto CallStackArgumentType = fromLLVMString(Arg0Operand, Model);
         revng_assert(not CallStackArgumentType->isVoidPrimitive());
@@ -333,7 +333,7 @@ getStrongModelInfo(const llvm::Instruction *Inst, const model::Binary &Model) {
           rc_return{ NestedRVs[Index->getZExtValue()] };
         }
 
-      } else if (FuncName.startswith("revng_stack_frame")) {
+      } else if (FuncName.starts_with("revng_stack_frame")) {
         // Retrieve the stack frame type
         revng_assert(not ParentFunc()->StackFrameType().isEmpty());
         rc_return{ ParentFunc()->StackFrameType() };
@@ -354,7 +354,7 @@ getStrongModelInfo(const llvm::Instruction *Inst, const model::Binary &Model) {
 
         rc_return Result;
       } else {
-        revng_assert(not FuncName.startswith("revng_call_stack_arguments"));
+        revng_assert(not FuncName.starts_with("revng_call_stack_arguments"));
       }
     }
   }

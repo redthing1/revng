@@ -282,18 +282,18 @@ revng::detail::Visitor::visit(llvm::Value &Constraint) {
 
   // Handle x - 4 < 5 as x >= 4 and x < 9
   using namespace llvm;
-  ICmpInst::Predicate Predicate{};
+  CmpPredicate Predicate{};
   ConstantInt *Addend = nullptr;
   ConstantInt *Bound = nullptr;
   if (match(&Constraint,
             m_ICmp(Predicate,
                    m_Add(m_Specific(&Variable), m_ConstantInt(Addend)),
                    m_ConstantInt(Bound)))
-      and ICmpInst::isRelational(Predicate)) {
+      and ICmpInst::isRelational(Predicate.dropSameSign())) {
     revng_log(Log, "Handling inequality");
     rc_return record(Constraint,
                      getRangeFromInequality(Addend->getValue(),
-                                            Predicate,
+                                            Predicate.dropSameSign(),
                                             Bound->getValue()));
   }
 
@@ -311,7 +311,7 @@ revng::detail::Visitor::visit(llvm::Value &Constraint) {
             m_ICmp(Predicate,
                    m_And(m_Specific(&Variable), m_ConstantInt(NegatedMask)),
                    m_ConstantInt(FixedConstant)))) {
-    bool IsExactComparison = not ICmpInst::isRelational(Predicate);
+    bool IsExactComparison = not ICmpInst::isRelational(Predicate.dropSameSign());
     const APInt &FixedValue = FixedConstant->getValue();
     auto Masked = FixedValue & NegatedMask->getValue();
     bool FixedValueIsCompatible = Masked == FixedValue;

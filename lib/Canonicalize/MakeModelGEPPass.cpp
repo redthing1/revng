@@ -698,7 +698,8 @@ getIRArithmetic(Use &AddressUse, const ModelTypesMap &PointerTypes) {
   } else {
     // We don't expect other stuff. This abort is mainly intended to be a
     // safety net during development. It can eventually be dropped.
-    AddressArith->dump();
+    AddressArith->print(llvm::errs());
+    llvm::errs() << "\n";
     revng_abort();
   }
 
@@ -2176,14 +2177,14 @@ bool MakeModelGEPPass::runOnFunction(llvm::Function &F) {
         Builder.SetCurrentDebugLocation(DebugLocation);
 
     // The other arguments are the indices in IndexVector
-    for (auto &Group : llvm::enumerate(GEPArgs.IndexVector)) {
+    for (auto &&Group : llvm::enumerate(GEPArgs.IndexVector)) {
       const auto &[Index, AggregateTy] = Group.value();
       const auto &[ConstantIndex, InductionVariables] = Index;
       revng_assert(AggregateTy == AggregateKind::Array
                    or InductionVariables.empty());
 
       Value *IndexValue = nullptr;
-      if (InductionVariables.empty() or not ConstantIndex.isNullValue()) {
+      if (InductionVariables.empty() or not ConstantIndex.isZero()) {
         auto *Int64Type = llvm::IntegerType::get(Context, 64 /*NumBits*/);
         IndexValue = ConstantInt::get(Int64Type, ConstantIndex);
       }
@@ -2238,12 +2239,12 @@ bool MakeModelGEPPass::runOnFunction(llvm::Function &F) {
     Value *ModelGEPPtr = Builder.CreateCall(AddressOfFunction,
                                             { Cached, ModelGEPRef });
 
-    if (not Mismatched.isZero()) {
+      if (not Mismatched.isZero()) {
       // If the GEPArgs have a RestOff that is strictly positive, we have to
       // inject the remaining part of the pointer arithmetic as normal sums
-      auto GEPResultBitWidth = ModelGEPPtr->getType()->getIntegerBitWidth();
-      APInt OffsetToAdd = MismatchedOffset.zextOrTrunc(GEPResultBitWidth);
-      if (not OffsetToAdd.isNullValue()) {
+        auto GEPResultBitWidth = ModelGEPPtr->getType()->getIntegerBitWidth();
+        APInt OffsetToAdd = MismatchedOffset.zextOrTrunc(GEPResultBitWidth);
+      if (not OffsetToAdd.isZero()) {
         ModelGEPPtr = Builder.CreateAdd(ModelGEPPtr,
                                         ConstantInt::get(Context, OffsetToAdd));
       }

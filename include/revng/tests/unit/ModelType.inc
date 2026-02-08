@@ -706,7 +706,7 @@ BOOST_AUTO_TEST_CASE(Filters) {
   revng_check(ScalarCount == 3);
 
   auto &&[CFT, _] = Model.makeCABIFunctionDefinition();
-  for (auto &[Index, Definition] : llvm::enumerate(Model.TypeDefinitions())) {
+  for (auto &&[Index, Definition] : llvm::enumerate(Model.TypeDefinitions())) {
     if (auto &&Type = Model.makeType(Definition->key());
         Definition->isPrototype()) {
       auto &&Pointer = model::PointerType::make(std::move(Type), 8);

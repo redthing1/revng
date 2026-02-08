@@ -12,6 +12,8 @@
 #include "revng/Support/ResourceFinder.h"
 #include "revng/TupleTree/TupleTree.h"
 
+#include "llvm/Support/Progress.h"
+
 using namespace revng::pipes;
 
 static model::BinaryReference makeReference(model::Binary &Binary,

@@ -4,6 +4,8 @@
 
 #include "revng/Model/RawBinaryView.h"
 
+#include "llvm/Support/Endian.h"
+
 std::optional<llvm::ArrayRef<uint8_t>>
 RawBinaryView::getByOffset(uint64_t Offset, uint64_t Size) const {
   auto Sum = OverflowSafeInt(Offset) + Size;
@@ -38,12 +40,8 @@ std::optional<uint64_t> RawBinaryView::readInteger(MetaAddress Address,
   if (not MaybeData)
     return std::nullopt;
 
-  llvm::support::endianness Endianness;
-  if (IsLittleEndian) {
-    Endianness = llvm::support::little;
-  } else {
-    Endianness = llvm::support::big;
-  }
+  llvm::endianness Endianness = IsLittleEndian ? llvm::endianness::little
+                                               : llvm::endianness::big;
 
   switch (Size) {
   case 1:

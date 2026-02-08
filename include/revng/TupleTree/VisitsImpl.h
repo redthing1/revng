@@ -97,7 +97,7 @@ template<typename T>
 std::optional<PathMatcher> PathMatcher::create(llvm::StringRef Path) {
   PathMatcher Result;
 
-  revng_assert(Path.startswith("/"));
+  revng_assert(Path.starts_with("/"));
   if (visitTupleTreeNode<T>(Path.substr(1), Result))
     return Result;
   else

@@ -381,10 +381,11 @@ Function *RootAnalyzer::createTemporaryRoot(Function *TheFunction,
   JTM.setCFGForm(CFGForm::NoFunctionCalls,
                  &ValueMaterializerJumpTargetWhitelist);
 
-  // Detach all the unreachable basic blocks, so they don't get copied
-  llvm::DenseSet<BasicBlock *> UnreachableBBs = JTM.computeUnreachable();
-  for (BasicBlock *UnreachableBB : UnreachableBBs)
-    UnreachableBB->removeFromParent();
+  // Keep the original function intact while cloning.
+  //
+  // Detaching basic blocks from the parent function can leave the IR in an
+  // inconsistent state (e.g. branch successors / PHIs still referencing a
+  // detached block) and can trigger crashes in LLVM's CloneFunction.
 
   // Clone the function
   OptimizedFunction = CloneFunction(TheFunction, OldToNew);
@@ -467,10 +468,6 @@ Function *RootAnalyzer::createTemporaryRoot(Function *TheFunction,
   size_t BlocksCount = OptimizedFunction->size();
   BlocksAnalyzedByValueMaterializer.push(BlocksCount);
 
-  // Reattach the unreachable basic blocks to the original root function
-  for (BasicBlock *UnreachableBB : UnreachableBBs)
-    UnreachableBB->insertInto(TheFunction);
-
   // Restore the dispatcher in the original function
   JTM.setCFGForm(CFGForm::SemanticPreserving);
   revng_assert(JTM.computeUnreachable().size() == 0);
@@ -488,9 +485,9 @@ void RootAnalyzer::promoteHelpersToIntrinsics(Function *OptimizedFunction,
   std::pair<std::vector<StringRef>, MapperFunction> Mapping[] = {
     { { "helper_clz", "helper_clz32", "helper_clz64", "helper_dclz" },
       [&Builder](CallInst *Call) {
-        return Builder.CreateBinaryIntrinsic(Intrinsic::ctlz,
-                                             Call->getArgOperand(0),
-                                             Builder.getFalse());
+        return cast<Instruction>(Builder.CreateBinaryIntrinsic(Intrinsic::ctlz,
+                                                              Call->getArgOperand(0),
+                                                              Builder.getFalse()));
       } }
   };
 
@@ -616,7 +613,9 @@ SummaryCallsBuilder RootAnalyzer::optimize(llvm::Function *OptimizedFunction,
     // Canonicalization
     FPM.addPass(PromotePass());
     FPM.addPass(EarlyCSEPass(true));
-    FPM.addPass(InstCombinePass(InstCombineMaxIterations));
+    InstCombineOptions InstCombineOpts;
+    InstCombineOpts.setMaxIterations(InstCombineMaxIterations);
+    FPM.addPass(InstCombinePass(InstCombineOpts));
 
     // This ensures we have in the IR values from constant pools, which will
     // then get collected by collectValuesStoredIntoMemory

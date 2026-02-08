@@ -4,7 +4,9 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+#include <atomic>
 #include <iostream>
+#include <string>
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -38,7 +40,7 @@ private:
 
 public:
   DynamicHierarchy(llvm::StringRef Name) : Parent(nullptr), Name(Name.str()) {
-    revng_assert(not Initialized);
+    revng_assert(not Initialized.load(std::memory_order_relaxed));
 
     getRoots().push_back(&self());
     getAll().push_back(&self());
@@ -51,7 +53,7 @@ public:
 
   DynamicHierarchy(llvm::StringRef Name, DynamicHierarchy &Parent) :
     Parent(&Parent), Name(Name.str()) {
-    revng_assert(not Initialized);
+    revng_assert(not Initialized.load(std::memory_order_relaxed));
 
     getAll().push_back(&self());
 
@@ -69,9 +71,10 @@ public:
 public:
   static void init() {
     bool ExpectedInitialized = false;
-    if (atomic_compare_exchange_weak(&Initialized,
-                                     &ExpectedInitialized,
-                                     true)) {
+    if (Initialized.compare_exchange_weak(ExpectedInitialized,
+                                          true,
+                                          std::memory_order_acq_rel,
+                                          std::memory_order_relaxed)) {
       for (DynamicHierarchy *Root : getAll())
         Root->registerInParent();
       static entry_t ID = -1;

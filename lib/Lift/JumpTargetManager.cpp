@@ -8,6 +8,7 @@
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Support/Progress.h"
+#include "llvm/Support/Endian.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Scalar/InstSimplifyPass.h"
@@ -132,7 +133,7 @@ bool TDBP::pinMaterializedValues(Function &F) {
   if (Marker == nullptr) {
     LLVMContext &C = M->getContext();
     auto *FT = FunctionType::get(Type::getVoidTy(C),
-                                 { Type::getInt8PtrTy(C) },
+                                 { PointerType::get(C, 0) },
                                  false);
     Marker = createIRHelper("jump_to_symbol",
                             *M,
@@ -554,7 +555,6 @@ void JumpTargetManager::harvestGlobalData() {
     using namespace model::Architecture;
     bool IsLittleEndian = isLittleEndian(Model->Architecture());
     auto PointerSize = getPointerSize(Model->Architecture());
-    using endianness = support::endianness;
     if (PointerSize == 8) {
       if (IsLittleEndian)
         findCodePointers<uint64_t, endianness::little>(StartVirtualAddress,
@@ -581,11 +581,10 @@ void JumpTargetManager::harvestGlobalData() {
                                                  << Unexplored.size());
 }
 
-template<typename value_type, unsigned endian>
+template<typename value_type, endianness endian>
 void JumpTargetManager::findCodePointers(MetaAddress StartVirtualAddress,
                                          const unsigned char *Start,
                                          const unsigned char *End) {
-  using support::endianness;
   using support::endian::read;
 
   constexpr auto Step = sizeof(value_type);
@@ -599,8 +598,7 @@ void JumpTargetManager::findCodePointers(MetaAddress StartVirtualAddress,
     Cursor += Step - Misalignment;
 
   for (; Cursor < End - Step; Cursor += Step) {
-    auto Read = read<value_type, static_cast<endianness>(endian), 1>;
-    uint64_t RawValue = Read(Cursor);
+    uint64_t RawValue = read<value_type, endian, 1>(Cursor);
     MetaAddress Value = fromPC(RawValue);
     if (Value.isInvalid())
       continue;
@@ -1321,7 +1319,7 @@ void JumpTargetManager::harvest() {
       HarvestingStats.push("harvest 3: InstructionCombining + TBDP");
 
       SimpleFunctionPassManager OptimizingPM;
-      OptimizingPM.addPass(llvm::InstCombinePass(1));
+      OptimizingPM.addPass(llvm::InstCombinePass());
       OptimizingPM.run(*TheFunction);
 
       legacy::PassManager PreliminaryBranchesPM;

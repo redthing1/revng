@@ -42,7 +42,7 @@ inline Value *createAdd(revng::IRBuilder &B, Value *V, uint64_t Addend) {
 }
 
 inline StringRef stripPrefix(StringRef Prefix, StringRef String) {
-  revng_assert(String.startswith(Prefix));
+  revng_assert(String.starts_with(Prefix));
   return String.substr(Prefix.size());
 }
 
@@ -482,6 +482,24 @@ private:
          zip(ArgumentRegisters, OldFunction->args()))
       ArgumentToRegister[Register] = &OldArgument;
 
+    auto GetRegisterArgument =
+      [&](model::Register::Values Register) -> llvm::Argument * {
+      auto It = ArgumentToRegister.find(Register);
+      if (It != ArgumentToRegister.end())
+        return It->second;
+
+      // Missing arguments are expected to be rare, but they can happen when
+      // the model prototype mentions registers that are not materialized as
+      // function arguments in the current IR (e.g. due to prior simplifications
+      // or imperfect prototype recovery). Don't crash on std::map::at().
+      revng_log(Log,
+                "Missing function argument for register "
+                  << model::Register::getName(Register).str()
+                  << " while upgrading "
+                  << OldFunction->getName().str());
+      return nullptr;
+    };
+
     //
     // Update references to old arguments
     //
@@ -562,9 +580,8 @@ private:
         } else {
           // It's in a register
           revng_assert(ModelArgument.Registers.size() == 1);
-          Argument *OldArgument = nullptr;
-          OldArgument = ArgumentToRegister.at(ModelArgument.Registers[0]);
-          OldArgument->replaceAllUsesWith(ReturnValueIntAddress);
+          if (Argument *OldArgument = GetRegisterArgument(ModelArgument.Registers[0]))
+            OldArgument->replaceAllUsesWith(ReturnValueIntAddress);
         }
 
         // Exclude the SPTAR from the list to process
@@ -608,15 +625,20 @@ private:
           // Replace the old argument with an address of the new argument
           revng_assert(ModelArgument.Registers.size() == 1);
           auto Register = ModelArgument.Registers[0];
-          Argument *OldArgument = ArgumentToRegister.at(Register);
-          OldArgument->replaceAllUsesWith(AddressOfNewArgument);
+          if (Argument *OldArgument = GetRegisterArgument(Register))
+            OldArgument->replaceAllUsesWith(AddressOfNewArgument);
         }
 
       } else if (ModelArgument.Kind == Scalar) {
         revng_assert(ModelArgument.Type->isScalar());
         // Handle scalar argument
         for (model::Register::Values Register : ModelArgument.Registers) {
-          Argument *OldArgument = ArgumentToRegister.at(Register);
+          Argument *OldArgument = GetRegisterArgument(Register);
+          if (OldArgument == nullptr) {
+            OffsetInNewArgument += model::Register::getSize(Register);
+            continue;
+          }
+
           Type *OldArgumentType = OldArgument->getType();
           auto OldArgumentSize = OldArgumentType->getIntegerBitWidth() / 8;
           revng_assert(model::Register::getSize(Register) == OldArgumentSize);
@@ -658,7 +680,11 @@ private:
                                                  ModelArgument.Type);
 
         for (model::Register::Values Register : ModelArgument.Registers) {
-          Argument *OldArgument = ArgumentToRegister.at(Register);
+          Argument *OldArgument = GetRegisterArgument(Register);
+          if (OldArgument == nullptr) {
+            OffsetInNewArgument += model::Register::getSize(Register);
+            continue;
+          }
 
           // Load value
           Value *ArgumentPointer = computeAddress(B,
@@ -1205,7 +1231,7 @@ private:
         if (OldReturnType->isStructTy()) {
           SmallVector<SmallPtrSet<CallInst *, 2>, 2>
             ExtractedValues = getExtractedValuesFromInstruction(OldCall);
-          for (auto &Group : llvm::enumerate(ExtractedValues)) {
+          for (auto &&Group : llvm::enumerate(ExtractedValues)) {
 
             unsigned FieldIndex = Group.index();
             SmallPtrSet<CallInst *, 2> &ExtractedAtIndex = Group.value();
@@ -1252,7 +1278,7 @@ private:
         // returning a 64-bit integer through two registers in i386)
         SmallVector<SmallPtrSet<CallInst *, 2>, 2>
           ExtractedValues = getExtractedValuesFromInstruction(OldCall);
-        for (auto &Group : llvm::enumerate(ExtractedValues)) {
+        for (auto &&Group : llvm::enumerate(ExtractedValues)) {
 
           unsigned FieldIndex = Group.index();
           SmallPtrSet<CallInst *, 2> &ExtractedAtIndex = Group.value();

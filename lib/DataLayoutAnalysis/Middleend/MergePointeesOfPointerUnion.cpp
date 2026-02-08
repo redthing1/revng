@@ -127,10 +127,9 @@ bool MergePointeesOfPointerUnion::runOnTypeSystem(LayoutTypeSystem &TS) {
       LoggerIndent MoreIndent{ Log };
 
       // Iterate over all of the equivalence sets.
-      for (auto I = PointersToMerge.begin(), E = PointersToMerge.end(); I != E;
-           ++I) {
+      for (const auto *ECV : PointersToMerge) {
         // Ignore non-leader sets.
-        if (not I->isLeader())
+        if (not ECV->isLeader())
           continue;
 
         // Loop over members in this set to select the node that we want to
@@ -169,10 +168,7 @@ bool MergePointeesOfPointerUnion::runOnTypeSystem(LayoutTypeSystem &TS) {
             return true;
           };
         using llvm::make_filter_range;
-        auto Pointers = make_filter_range(llvm::make_range(PointersToMerge
-                                                             .member_begin(I),
-                                                           PointersToMerge
-                                                             .member_end()),
+        auto Pointers = make_filter_range(PointersToMerge.members(*ECV),
                                           NotErasedPointer);
 
         if (Log.isEnabled()) {

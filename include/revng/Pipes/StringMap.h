@@ -316,7 +316,10 @@ private:
   void deserializeImpl(TarReader &Reader) {
     for (TarReader::Entry &Entry : Reader.entries()) {
       llvm::StringRef Name = Entry.Filename;
-      revng_assert(Name.consume_back(ArchiveSuffix));
+      // `consume_back` has side effects (it mutates `Name`), so it must run in
+      // release builds too. Do not hide it behind `revng_assert`.
+      bool Stripped = Name.consume_back(ArchiveSuffix);
+      revng_check(Stripped);
       KeyType Key = keyFromString(Name);
       std::string Data = std::string(Entry.Data.data(), Entry.Data.size());
       Map[Key] = Data;

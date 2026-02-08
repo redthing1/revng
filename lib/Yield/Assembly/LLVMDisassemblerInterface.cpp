@@ -299,7 +299,7 @@ DI::Disassembled DI::parse(const llvm::MCInst &Instruction,
 
   llvm::StringRef Markup = cleanStringUp(MarkupStorage);
   auto Mnemonic = tryDetectMnemonic(Markup,
-                                    Printer.getMnemonic(&Instruction).first);
+                                    Printer.getMnemonic(Instruction).first);
   if (!Mnemonic.has_value())
     Result.Error = "Impossible to detect mnemonic.";
 

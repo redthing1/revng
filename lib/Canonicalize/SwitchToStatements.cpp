@@ -212,7 +212,8 @@ static bool isProgramPoint(const Instruction *I) {
   }
 
   if (nullptr != UnexpectedInstruction) {
-    I->dump();
+    UnexpectedInstruction->print(llvm::errs());
+    llvm::errs() << "\n";
     revng_abort("Unexpected Instruction");
   }
 

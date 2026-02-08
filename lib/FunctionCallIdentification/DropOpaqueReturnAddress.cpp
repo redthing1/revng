@@ -49,5 +49,5 @@ public:
 
 char DropOpaqueReturnAddress::ID;
 
-using Register = RegisterPass<DropOpaqueReturnAddress>;
-static Register R("drop-opaque-return-address", "", false, false);
+using PassReg = RegisterPass<DropOpaqueReturnAddress>;
+static PassReg R("drop-opaque-return-address", "", false, false);

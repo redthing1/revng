@@ -150,7 +150,7 @@ std::vector<std::string> PathList::list(llvm::StringRef Path,
       for (directory_iterator File(FullPath, EC), FileEnd;
            File != FileEnd && !EC;
            File.increment(EC)) {
-        if (llvm::StringRef(File->path()).endswith(Suffix)) {
+        if (llvm::StringRef(File->path()).ends_with(Suffix)) {
           bool New = Visited.insert(path::filename(File->path()).str()).second;
           if (New)
             Result.push_back(File->path());
