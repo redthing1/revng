@@ -6,6 +6,10 @@
 
 #include "revng/TypeNames/ModelCBuilder.h"
 
+namespace llvm {
+class Module;
+}
+
 namespace ptml {
 
 class HeaderBuilder {
@@ -33,7 +37,7 @@ public:
   /// Generate a C header containing a serialization of the type system,
   /// i.e. function prototypes, structs, unions, typedefs, and anything that
   /// resides in the model.
-  bool printModelHeader();
+  bool printModelHeader(const llvm::Module *ModuleForCallSiteOverrides = nullptr);
 
   /// Generate a C header containing the declaration of each non-isolated
   /// function in a given LLVM IR module, i.e. QEMU helpers and revng helpers,

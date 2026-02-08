@@ -18,6 +18,7 @@
 #include "revng/HeadersGeneration/PTMLHeaderBuilder.h"
 #include "revng/Model/Binary.h"
 #include "revng/Model/Helpers.h"
+#include "revng/Model/IRHelpers.h"
 #include "revng/Model/TypeDefinition.h"
 #include "revng/Pipeline/Location.h"
 #include "revng/Pipes/Ranks.h"
@@ -27,7 +28,7 @@
 
 static Logger Log{ "model-to-header" };
 
-bool ptml::HeaderBuilder::printModelHeader() {
+bool ptml::HeaderBuilder::printModelHeader(const llvm::Module *ModuleForCallSiteOverrides) {
 
   auto Scope = B.getScopeTag(ptml::tags::Div);
 
@@ -67,6 +68,54 @@ bool ptml::HeaderBuilder::printModelHeader() {
     auto Foldable = B.getScopeTag(CBuilder::Scopes::FunctionDeclarations,
                                   /* Newline = */ true);
 
+    // If requested, try to pick a more precise prototype for functions that
+    // still use the model default prototype by looking at call-site prototype
+    // metadata in the current LLVM module.
+    //
+    // This is primarily meant to make the "recompilable archive" artifact more
+    // self-consistent: EnforceABI injects call-site prototypes that can be
+    // narrower than the model's DefaultPrototype.
+    std::unordered_map<MetaAddress, const model::TypeDefinition *> Overrides;
+    std::set<MetaAddress> Conflicts;
+    const model::TypeDefinition *DefaultPrototype = B.Binary.defaultPrototype();
+    if (ModuleForCallSiteOverrides != nullptr and DefaultPrototype != nullptr) {
+      for (const llvm::Function &F : *ModuleForCallSiteOverrides) {
+        for (const llvm::BasicBlock &BB : F) {
+          for (const llvm::Instruction &I : BB) {
+            auto *Call = llvm::dyn_cast<llvm::CallInst>(&I);
+            if (Call == nullptr)
+              continue;
+
+            // We only override with C ABI prototypes.
+            const model::TypeDefinition *CallSiteFT = getCallSitePrototype(B.Binary, Call);
+            if (not llvm::isa<model::CABIFunctionDefinition>(CallSiteFT))
+              continue;
+
+            llvm::Function *Callee = getCalledFunction(Call);
+            if (Callee == nullptr)
+              continue;
+
+            const model::Function *ModelF = llvmToModelFunction(B.Binary, *Callee);
+            if (ModelF == nullptr)
+              continue;
+
+            // Only override functions still using the default prototype.
+            const model::TypeDefinition *CurrentFT = B.Binary.prototypeOrDefault(ModelF->prototype());
+            if (CurrentFT != DefaultPrototype)
+              continue;
+
+            MetaAddress Entry = ModelF->Entry();
+            auto It = Overrides.find(Entry);
+            if (It == Overrides.end()) {
+              Overrides.emplace(Entry, CallSiteFT);
+            } else if (It->second->key() != CallSiteFT->key()) {
+              Conflicts.insert(Entry);
+            }
+          }
+        }
+      }
+    }
+
     B.appendLineComment("\\defgroup Functions");
     B.appendLineComment("\\{");
     B.append("\n");
@@ -75,7 +124,13 @@ bool ptml::HeaderBuilder::printModelHeader() {
       if (Configuration.FunctionsToOmit.contains(MF.Entry()))
         continue;
 
-      const auto &FT = *B.Binary.prototypeOrDefault(MF.prototype());
+      const model::TypeDefinition *FTPtr = B.Binary.prototypeOrDefault(MF.prototype());
+      if (DefaultPrototype != nullptr and FTPtr == DefaultPrototype) {
+        auto It = Overrides.find(MF.Entry());
+        if (It != Overrides.end() and not Conflicts.contains(MF.Entry()))
+          FTPtr = It->second;
+      }
+      const auto &FT = *FTPtr;
       if (B.Configuration.TypesToOmit.contains(FT.key()))
         continue;
 
