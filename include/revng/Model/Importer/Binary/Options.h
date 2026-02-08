@@ -4,31 +4,7 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
-#include <cstdint>
-#include <string>
+// Compatibility header: historical include path for the binary importer options
+// type. For command-line options, include ImporterCLOptions.h instead.
 
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/CommandLine.h"
-
-enum class DebugInfoLevel {
-  No,
-  Yes,
-  IgnoreLibraries
-};
-
-struct ImporterOptions {
-  const uint64_t BaseAddress;
-
-  const DebugInfoLevel DebugInfo;
-  const bool EnableRemoteDebugInfo;
-
-  const llvm::ArrayRef<std::string> AdditionalDebugInfoPaths;
-};
-
-[[nodiscard]] const ImporterOptions importerOptions();
-
-extern llvm::cl::opt<uint64_t> BaseAddress;
-extern llvm::cl::list<std::string> ImportDebugInfo;
-extern llvm::cl::opt<DebugInfoLevel> DebugInfo;
-extern llvm::cl::opt<bool> EnableRemoteDebugInfo;
+#include "revng/Model/Importer/Binary/ImporterOptions.h"

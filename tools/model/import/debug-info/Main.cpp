@@ -12,7 +12,7 @@
 
 #include "revng/ABI/DefaultFunctionPrototype.h"
 #include "revng/Model/Architecture.h"
-#include "revng/Model/Importer/Binary/Options.h"
+#include "revng/Model/Importer/Binary/ImporterCLOptions.h"
 #include "revng/Model/Importer/DebugInfo/DwarfImporter.h"
 #include "revng/Model/Importer/DebugInfo/PDBImporter.h"
 #include "revng/Support/InitRevng.h"
@@ -60,7 +60,7 @@ int main(int Argc, char *Argv[]) {
   using COFFObjectFileType = llvm::object::COFFObjectFile;
   auto &ObjectFile = *llvm::cast<ObjectFileType>(BinaryOrErr->getBinary());
 
-  const ImporterOptions &Options = importerOptions();
+  ImporterOptions Options = importerOptionsFromCommandLine();
 
   // Import debug info from both PE and ELF.
   TupleTree<model::Binary> Model;

@@ -2,9 +2,10 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 
-#include "revng/Model/Importer/Binary/Options.h"
+#include "revng/Model/Importer/Binary/ImporterCLOptions.h"
 #include "revng/Support/CommandLine.h"
 
 using Enum = llvm::cl::OptionEnumValue;
@@ -55,9 +56,10 @@ cl::opt<bool> EnableRemoteDebugInfo("enable-remote-debug-info",
                                     cl::cat(MainCategory),
                                     cl::init(false));
 
-const ImporterOptions importerOptions() {
+ImporterOptions importerOptionsFromCommandLine() {
   return ImporterOptions{ .BaseAddress = BaseAddress,
                           .DebugInfo = DebugInfo,
                           .EnableRemoteDebugInfo = EnableRemoteDebugInfo,
                           .AdditionalDebugInfoPaths = ImportDebugInfo };
 }
+

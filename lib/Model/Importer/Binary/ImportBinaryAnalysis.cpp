@@ -5,7 +5,7 @@
 #include "revng/Model/Binary.h"
 #include "revng/Model/Importer/Binary/BinaryImporter.h"
 #include "revng/Model/Importer/Binary/ImportBinaryAnalysis.h"
-#include "revng/Model/Importer/Binary/Options.h"
+#include "revng/Model/Importer/Binary/ImporterCLOptions.h"
 #include "revng/Model/Importer/DebugInfo/DwarfImporter.h"
 #include "revng/Pipeline/RegisterAnalysis.h"
 #include "revng/Pipes/ModelGlobal.h"
@@ -32,7 +32,7 @@ llvm::Error ImportBinaryAnalysis::run(pipeline::ExecutionContext &Context,
 
   TupleTree<model::Binary> &Model = getWritableModelFromContext(Context);
 
-  const ImporterOptions &Options = importerOptions();
+  ImporterOptions Options = importerOptionsFromCommandLine();
   llvm::StringRef BinaryPath = *SourceBinary.path();
   auto MaybeBuffer = llvm::MemoryBuffer::getFileOrSTDIN(BinaryPath,
                                                         false,
@@ -76,7 +76,7 @@ llvm::Error ParseBinaryAnalysis::run(Model &Model,
                                      const Request &Incoming,
                                      llvm::StringRef Configuration,
                                      const BinariesContainer &Binaries) {
-  const ImporterOptions &Options = importerOptions();
+  ImporterOptions Options = importerOptionsFromCommandLine();
 
   llvm::Task T(2, "Import binary");
   T.advance("Import main binary", true);

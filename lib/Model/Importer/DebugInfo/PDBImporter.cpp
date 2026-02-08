@@ -30,7 +30,7 @@
 #include "llvm/Support/Program.h"
 
 #include "revng/Model/Binary.h"
-#include "revng/Model/Importer/Binary/Options.h"
+#include "revng/Model/Importer/Binary/ImporterOptions.h"
 #include "revng/Model/Importer/DebugInfo/PDBImporter.h"
 #include "revng/Model/Pass/AllPasses.h"
 #include "revng/Model/Processing.h"

@@ -24,7 +24,7 @@
 #include "revng/ADT/STLExtras.h"
 #include "revng/Model/Binary.h"
 #include "revng/Model/Importer/Binary/BinaryImporterHelper.h"
-#include "revng/Model/Importer/Binary/Options.h"
+#include "revng/Model/Importer/Binary/ImporterOptions.h"
 #include "revng/Model/Importer/DebugInfo/DwarfImporter.h"
 #include "revng/Model/Pass/AllPasses.h"
 #include "revng/Model/Processing.h"

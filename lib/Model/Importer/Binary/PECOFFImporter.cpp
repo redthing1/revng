@@ -11,7 +11,7 @@
 #include "revng/Model/Binary.h"
 #include "revng/Model/IRHelpers.h"
 #include "revng/Model/Importer/Binary/BinaryImporterHelper.h"
-#include "revng/Model/Importer/Binary/Options.h"
+#include "revng/Model/Importer/Binary/ImporterOptions.h"
 #include "revng/Model/Importer/DebugInfo/PDBImporter.h"
 #include "revng/Model/Pass/AllPasses.h"
 #include "revng/Support/Debug.h"

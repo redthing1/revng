@@ -12,7 +12,7 @@
 #include "llvm/Support/Error.h"
 
 #include "revng/Model/Importer/Binary/BinaryImporter.h"
-#include "revng/Model/Importer/Binary/Options.h"
+#include "revng/Model/Importer/Binary/ImporterOptions.h"
 
 #include "Importers.h"
 

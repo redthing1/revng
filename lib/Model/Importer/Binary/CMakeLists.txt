@@ -12,8 +12,12 @@ revng_add_library_internal(
   MachOImporter.cpp
   PECOFFImporter.cpp)
 
+# Command-line options and helpers for the binary importer.
+revng_add_library_internal(revngModelBinaryImporterCLI SHARED
+                           ImporterCLOptions.cpp)
+
 # Pipeline analysis plugin that registers the "import-binary" analysis.
-revng_add_analyses_library_internal(revngModelImporterBinary Options.cpp
+revng_add_analyses_library_internal(revngModelImporterBinary
                                    ImportBinaryAnalysis.cpp)
 
 if(LLVM_LINK_LLVM_DYLIB)
@@ -24,4 +28,7 @@ endif()
 target_link_libraries(revngModelBinaryImporter revngModel
                       revngModelImporterDebugInfo revngABI ${LLVM_LIBRARIES})
 
-target_link_libraries(revngModelImporterBinary revngModelBinaryImporter)
+target_link_libraries(revngModelBinaryImporterCLI revngSupport)
+
+target_link_libraries(revngModelImporterBinary revngModelBinaryImporter
+                      revngModelBinaryImporterCLI)
