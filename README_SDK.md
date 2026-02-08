@@ -8,11 +8,21 @@ The intent is: **hack directly on the real lifter + analyses + decompiler**,
 and still have a reasonably sane way to build and consume those pieces as a
 library.
 
-The SDK surface in this fork lives in:
+The SDK surfaces in this fork live in:
+
+Direct (no YAML / no plugin loading):
+
+- `include/revng/SDK/Direct/Direct.h` (public API)
+- `lib/SDK/Direct.cpp` (implementation)
+- `tools/sdk/Import.cpp` / `tools/sdk/Lift.cpp` / `tools/sdk/CFG.cpp` /
+  `tools/sdk/Isolate.cpp` (reference CLIs: `sdk-import`, `sdk-lift`, `sdk-cfg`,
+  `sdk-isolate`)
+
+Pipeline-backed (YAML + plugin loading; needed for decompilation/recompilable archives):
 
 - `include/revng/SDK/Decompile.h` (public API)
 - `lib/SDK/Decompile.cpp` (implementation)
-- `tools/sdk/Main.cpp` (a minimal reference CLI: `sdk-decompile`)
+- `tools/sdk/Main.cpp` (reference CLI: `sdk-decompile`)
 
 This is intentionally **not** a narrow facade. It is a thin convenience layer
 on top of revng’s real building blocks:
@@ -161,13 +171,17 @@ Important knobs:
 
 Minimal SDK deliverables:
 
-- `revngSDK`: shared library (C++ SDK surface)
-- `sdk-decompile`: reference CLI built on top of the SDK
+- Libraries:
+  - `revngSDKDirect`: shared library (direct/no-YAML workflows)
+  - `revngSDK`: shared library (pipeline-backed artifact production)
+- Reference CLIs:
+  - `sdk-import`, `sdk-lift`, `sdk-cfg`, `sdk-isolate` (direct/no-YAML)
+  - `sdk-decompile` (pipeline-backed)
 
-Build the CLI:
+Build the CLIs:
 
 ```bash
-ninja -C build-sdk-cpp-clang sdk-decompile
+ninja -C build-sdk-cpp-clang sdk-import sdk-lift sdk-cfg sdk-isolate sdk-decompile
 ```
 
 Notes:
@@ -175,7 +189,26 @@ Notes:
 - `sdk-decompile` loads analysis plugins (`lib/revng/analyses/*.so`) from disk.
   In this fork, `ninja sdk-decompile` also builds the `analyses` target to keep
   those plugins in sync.
-- The binary ends up at `build-sdk-cpp-clang/libexec/revng/sdk-decompile`.
+- The binaries end up under `build-sdk-cpp-clang/libexec/revng/`.
+
+## Running the direct/no-YAML CLIs
+
+These tools are meant as small, readable examples of driving revng directly
+from C++ (no pipelines YAML):
+
+- `sdk-import`: import a binary to a model YAML.
+- `sdk-lift`: import + lift to LLVM (`.bc` or `.ll`).
+- `sdk-cfg`: recover CFGs and emit a `cfg/*.yml` archive.
+- `sdk-isolate`: isolate selected functions and emit per-function LLVM modules.
+
+Examples (PIE binaries may need `--base` adjustments):
+
+```bash
+build-sdk-cpp-clang/libexec/revng/sdk-import -o /var/tmp/model.yml /path/to/binary
+build-sdk-cpp-clang/libexec/revng/sdk-lift -o /var/tmp/lift.bc /path/to/binary
+build-sdk-cpp-clang/libexec/revng/sdk-cfg --function-entry <entry> -o /var/tmp/cfg.tar.gz /path/to/binary
+build-sdk-cpp-clang/libexec/revng/sdk-isolate --function-entry <entry> -o /var/tmp/isolated.tar.gz /path/to/binary
+```
 
 ## Running the reference CLI: `sdk-decompile`
 
@@ -201,6 +234,12 @@ SDK-specific options (implemented by `tools/sdk/Main.cpp`, shown under the
   discovered root).
 - `--analyses-dir <dir>`: override the directory containing analysis plugins
   (`*.so`).
+- `--list-steps`: list pipeline steps and exit.
+- `--list-analyses-lists`: list analyses lists and exit.
+- `--analysis-list <name>`: override the initial analyses list (default:
+  `revng-initial-auto-analysis`).
+- `--no-initial-analyses`: skip the initial analyses list entirely (primarily
+  useful when resuming from `--execdir`).
 - `--step <name>`: pipeline step name to run to produce the requested artifact
   (default: `emit-recompilable-archive`).
 - `--analysis-scope=whole|selected`: when `--function-entry` is present, control
@@ -356,25 +395,64 @@ the binary importer, which are useful for non-default layouts:
   imported.
 - `--import-debug-info=<path>`: add extra search paths/files for debug info.
 
+### Introspection / ergonomics
+
+Useful flags when exploring what the shipped pipelines can do:
+
+- `--list-steps`: print the available pipeline steps and exit.
+- `--list-analyses-lists`: print the available analyses lists and exit.
+
+Useful flags when controlling work done before artifacts:
+
+- `--analysis-list <name>`: override the initial analyses list.
+- `--no-initial-analyses`: skip the initial analyses list entirely (primarily
+  useful when resuming from `--execdir`).
+
 ## Using the C++ SDK (`revng::sdk`)
 
-Public entry points are declared in `include/revng/SDK/Decompile.h`.
+There are two complementary SDK layers:
 
-### What you get
+- **Direct (no YAML)**: small building blocks you can call from C++ without the
+  pipeline system. Public entry points:
+  - `include/revng/SDK/Direct/Direct.h` (`revng::sdk::direct::*`)
+- **Pipeline-backed**: a thin convenience layer around
+  `revng::pipes::PipelineManager` for producing artifacts, including
+  recompilable archives. Public entry points:
+  - `include/revng/SDK/Decompile.h` (`revng::sdk::*`)
 
-The SDK layer provides:
+### Direct (no YAML) example: lift to LLVM bitcode
 
-- `revng::sdk::PipelineConfig`: configuration for pipelines, plugin loading,
-  selected functions, and artifact selection.
-- `revng::sdk::createPipelineManager`: construct a `pipes::PipelineManager`
-  with registries initialized and (optionally) analysis plugins loaded.
-- `revng::sdk::produceArtifact`: convenience wrapper that:
-  - loads the input binary into the “input” container
-  - runs an analyses list (default: `revng-initial-auto-analysis`)
-  - runs a pipeline step (default: `emit-recompilable-archive`)
-  - stores the resulting artifact container to a `revng::FilePath`
+```cpp
+#include "llvm/Support/Error.h"
 
-### Minimal example: produce an artifact
+#include "revng/SDK/Direct/Direct.h"
+#include "revng/Support/IRHelpers.h"
+
+int main() {
+  // Configure importing without touching llvm::cl globals.
+  ImporterOptions Importer;
+  Importer.BaseAddress = 0x400000;
+  Importer.DebugInfo = DebugInfoLevel::Yes;
+  Importer.EnableRemoteDebugInfo = false;
+
+  ::Model Model =
+    llvm::cantFail(revng::sdk::direct::importModel("/path/to/bin", Importer));
+
+  revng::pypeline::BinariesContainer Binaries;
+  llvm::cantFail(revng::sdk::direct::loadBinary("/path/to/bin", Binaries));
+
+  revng::pypeline::LLVMRootContainer Root;
+  llvm::cantFail(revng::sdk::direct::lift(Model, Binaries, Root));
+
+  // From here you can:
+  // - write bitcode: writeBitcode(Root.getModule(), ...);
+  // - recover CFGs: revng::sdk::direct::collectCFG(...);
+  // - isolate functions: revng::sdk::direct::isolate(...).
+  return 0;
+}
+```
+
+### Pipeline-backed example: produce an artifact
 
 ```cpp
 #include "llvm/Support/Error.h"
@@ -446,7 +524,10 @@ set(REVNG_RUNTIME_PREFIX "/path/to/extracted/revng/root" CACHE PATH "" FORCE)
 add_subdirectory(external/revng)
 
 add_executable(mytool main.cpp)
-target_link_libraries(mytool PRIVATE revngSDK)
+# Use one of:
+# - revngSDKDirect: direct/no-YAML import + lift + CFG + isolate
+# - revngSDK: pipeline-backed artifact production (incl. decompile/recompilable archives)
+target_link_libraries(mytool PRIVATE revngSDKDirect)
 ```
 
 As an installed package:
@@ -454,7 +535,7 @@ As an installed package:
 ```cmake
 find_package(revng CONFIG REQUIRED)
 add_executable(mytool main.cpp)
-target_link_libraries(mytool PRIVATE revngSDK)
+target_link_libraries(mytool PRIVATE revngSDKDirect)
 ```
 
 Note: `revngSDK` is a convenience layer. If you want to call deeper APIs
