@@ -25,22 +25,23 @@ getTripCount(uint64_t StartOffset, uint64_t EndOffset, uint64_t Stride) {
 namespace dla {
 
 using NeighborIterator = LayoutTypeSystem::NeighborIterator;
+using Link = LayoutTypeSystemNode::Link;
 
-// Helper ordering for NeighborIterators. We need it here because we need to use
-// such iterators and keys in associative containers, and we want neighbors with
-// lower offset to come first.
-// Notice that this might have undefined behavior if dereferencing either LHS
-// or RHS is undefined behavior itself.
-// The bottom line is that we should never insert invalid iterators into
-// associative containers.
-static std::weak_ordering operator<=>(const NeighborIterator &LHS,
-                                      const NeighborIterator &RHS) {
-  const auto &[LHSSucc, LHSTag] = *LHS;
-  const auto &[RHSSucc, RHSTag] = *RHS;
-  if (auto Cmp = LHSTag <=> RHSTag; Cmp != 0)
-    return Cmp;
-  return LHSSucc <=> RHSSucc;
-}
+// Don't store `NeighborIterator` in owning containers: DLA transformations
+// erase/move edges, invalidating iterators and causing crashes when they are
+// later compared inside `std::set`/`llvm::SmallSet`.
+//
+// Store stable keys (link values) instead, and look up the iterator when needed.
+struct LinkLess {
+  bool operator()(const Link &LHS, const Link &RHS) const {
+    auto LessNode = std::less<LayoutTypeSystemNode *>{};
+    if (LessNode(LHS.first, RHS.first))
+      return true;
+    if (LessNode(RHS.first, LHS.first))
+      return false;
+    return std::less<const TypeLinkTag *>{}(LHS.second, RHS.second);
+  }
+};
 
 struct InstanceEdge {
   OffsetExpression OE;
@@ -290,9 +291,9 @@ using llvm::SetVector;
 using llvm::SmallSet;
 using llvm::SmallVector;
 
-using CompactedEdgeVector = SetVector<NeighborIterator,
-                                      SmallVector<NeighborIterator, 8>,
-                                      SmallSet<NeighborIterator, 8>>;
+using CompactedEdgeVector = SetVector<Link,
+                                      SmallVector<Link, 8>,
+                                      SmallSet<Link, 8, LinkLess>>;
 
 template<bool StridedEdges>
 static CompactedArrayInfo
@@ -312,7 +313,7 @@ getEdgeToCompactWithCurrent(LayoutTypeSystemNode *Parent,
     SiblingEdgeNext = std::next(SiblingEdgeIt);
 
     // If we have already compacted that, skip it.
-    if (CompactedWithCurrent.count(SiblingEdgeIt) > 0)
+    if (CompactedWithCurrent.count(*SiblingEdgeIt) > 0)
       continue;
 
     // Ignore edges that shouldn't be considered.
@@ -380,7 +381,7 @@ getEdgeToCompactWithCurrent(LayoutTypeSystemNode *Parent,
 
     // Here we know that ArraySibling can be compacted with the current
     // array we're tracking.
-    CompactedWithCurrent.insert(SiblingEdgeIt);
+    CompactedWithCurrent.insert(*SiblingEdgeIt);
   }
   return Current;
 }
@@ -436,7 +437,7 @@ bool CompactCompatibleArrays::runOnTypeSystem(LayoutTypeSystem &TS) {
         // If we find an ArraySibling that strongly overlaps with the array
         // we're tracking we compact them and update our Current.
         CompactedEdgeVector CompactedWithCurrent = {};
-        CompactedWithCurrent.insert(ChildEdgeIt);
+        CompactedWithCurrent.insert(*ChildEdgeIt);
 
         // Compact with strided edges first.
         Current = getEdgeToCompactWithCurrent<true>(Parent,
@@ -458,8 +459,9 @@ bool CompactCompatibleArrays::runOnTypeSystem(LayoutTypeSystem &TS) {
 
           // Helper lambda to compact the various components into the compacted
           // array.
-          auto Compact = [&](const NeighborIterator &ToCompactIt) {
-            auto &[TargetNode, EdgeTag] = *ToCompactIt;
+          auto Compact = [&](const Link &ToCompact) {
+            auto *TargetNode = ToCompact.first;
+            auto *EdgeTag = ToCompact.second;
             uint64_t OldOffset = EdgeTag->getOffsetExpr().Offset;
             revng_assert(OldOffset >= Current.StartOffset);
             uint64_t OffsetInArray = (OldOffset - Current.StartOffset)
@@ -467,19 +469,20 @@ bool CompactCompatibleArrays::runOnTypeSystem(LayoutTypeSystem &TS) {
             TS.addInstanceLink(New,
                                TargetNode,
                                OffsetExpression{ OffsetInArray });
-            return TS.eraseEdge(Parent, ToCompactIt);
+            auto It = Parent->Successors.find(ToCompact);
+            revng_assert(It != Parent->Successors.end());
+            return TS.eraseEdge(Parent, It);
           };
 
           // Compact all the array components.
           const auto VectorToCompact = CompactedWithCurrent.takeVector();
-          revng_assert(VectorToCompact.front() == ChildEdgeIt);
-          for (const NeighborIterator &ToCompact :
-               llvm::drop_begin(VectorToCompact))
+          revng_assert(VectorToCompact.front() == *ChildEdgeIt);
+          for (const Link &ToCompact : llvm::drop_begin(VectorToCompact))
             Compact(ToCompact);
 
           // We compact ChildEdgeIt as last, so that it updates ChildEdgeNext
           // properly to continue the outer iteration.
-          ChildEdgeNext = Compact(ChildEdgeIt);
+          ChildEdgeNext = Compact(*ChildEdgeIt);
 
           OffsetExpression NewStridedOffset{ Current.StartOffset };
           NewStridedOffset.Strides.push_back(Current.Stride);
@@ -490,7 +493,7 @@ bool CompactCompatibleArrays::runOnTypeSystem(LayoutTypeSystem &TS) {
           TS.addInstanceLink(Parent, New, std::move(NewStridedOffset));
         } else {
           revng_assert(CompactedWithCurrent.size() == 1);
-          revng_assert(CompactedWithCurrent.front() == ChildEdgeIt);
+          revng_assert(CompactedWithCurrent.front() == *ChildEdgeIt);
         }
       }
     }
