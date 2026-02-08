@@ -344,38 +344,14 @@ void MachOImporter::parseMachOSegment(ArrayRef<uint8_t> RawDataRef,
 void MachOImporter::registerBindEntry(const object::MachOBindEntry *Entry) {
   MetaAddress Target = fromGeneric(Entry->address());
   uint64_t Addend = static_cast<uint64_t>(Entry->addend());
-  RelocationType::Values Type = RelocationType::Invalid;
-  (void) Type;
-  uint64_t PointerSize = Architecture::getPointerSize(Model->Architecture());
+  (void) Target;
+  (void) Addend;
 
-  switch (Entry->type()) {
-  case BIND_TYPE_POINTER:
-    if (PointerSize == 4) {
-      Type = RelocationType::WriteAbsoluteAddress32;
-    } else if (PointerSize == 8) {
-      Type = RelocationType::WriteAbsoluteAddress64;
-    } else {
-      revng_abort();
-    }
-    break;
-
-  case BIND_TYPE_TEXT_ABSOLUTE32:
-    Type = RelocationType::WriteAbsoluteAddress32;
-    break;
-
-  case BIND_TYPE_TEXT_PCREL32:
-    Type = RelocationType::WriteRelativeAddress32;
-    Addend = Addend - 4;
-    break;
-
-  case BIND_TYPE_INVALID:
-  default:
-    revng_log(Log,
-              "Ignoring unexpected bind entry with type " << Entry->type());
-    break;
-  }
-
-  // TODO: record relocation on symbol
+  // TODO: record relocations on symbols.
+  //
+  // Note: LLVM 21's MachOBindEntry no longer exposes the numeric bind type
+  // (it only provides a human-readable `typeName()`), and revng currently
+  // doesn't consume this information anyway.
 }
 
 Error importMachO(TupleTree<model::Binary> &Model,
