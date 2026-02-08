@@ -8,6 +8,7 @@
 #include <optional>
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/Error.h"
 
 #include "revng/Pipeline/Loader.h"
@@ -230,16 +231,21 @@ llvm::Error Loader::parseSteps(Runner &Runner,
   return llvm::Error::success();
 }
 
-llvm::Error Loader::parseDeclarations(Runner &Runner,
-                                      const PipelineDeclaration &Declaration,
-                                      StringsMap &ReadOnlyNames) const {
+llvm::Error
+Loader::parseDeclarations(Runner &Runner,
+                          const PipelineDeclaration &Declaration,
+                          StringsMap &ReadOnlyNames,
+                          const llvm::StringSet<> &UsedContainers) const {
 
-  for (const auto &Container : Declaration.Containers)
+  for (const auto &Container : Declaration.Containers) {
+    if (not UsedContainers.contains(Container.Name))
+      continue;
     if (auto Error = parseContainerDeclaration(Runner,
                                                Container,
                                                ReadOnlyNames);
         Error)
       return Error;
+  }
   return llvm::Error::success();
 }
 
@@ -283,6 +289,40 @@ llvm::Expected<Runner>
 Loader::load(llvm::ArrayRef<PipelineDeclaration> Pipelines) const {
   Runner ToReturn(*PipelineContext);
 
+  llvm::StringSet<> UsedContainers;
+  const auto AddUsedContainers = [&](const auto &Names) {
+    for (const auto &Name : Names)
+      UsedContainers.insert(Name);
+  };
+
+  // Only require container types for containers that are referenced by enabled
+  // steps/pipes/analyses. This lets a single pipelines YAML describe optional
+  // branches (e.g. Clift/MLIR) without forcing all builds to provide those
+  // container types.
+  for (const auto &Pipeline : Pipelines) {
+    for (const auto &Branch : Pipeline.Branches) {
+      for (const auto &Step : Branch.Steps) {
+        if (not isInvocationUsed(Step.EnabledWhen))
+          continue;
+
+        if (Step.Artifacts.isValid())
+          UsedContainers.insert(Step.Artifacts.Container);
+
+        for (const auto &Invocation : Step.Pipes) {
+          if (not isInvocationUsed(Invocation.EnabledWhen))
+            continue;
+          AddUsedContainers(Invocation.UsedContainers);
+        }
+
+        for (const auto &Analysis : Step.Analyses)
+          AddUsedContainers(Analysis.UsedContainers);
+      }
+    }
+
+    for (const auto &Analysis : Pipeline.Analyses)
+      AddUsedContainers(Analysis.UsedContainers);
+  }
+
   llvm::SmallVector<const BranchDeclaration *, 2> ToSort;
   std::map<const BranchDeclaration *, llvm::StringRef> BranchToComponent;
   for (const auto &Pipeline : Pipelines) {
@@ -297,7 +337,10 @@ Loader::load(llvm::ArrayRef<PipelineDeclaration> Pipelines) const {
 
   llvm::StringMap<std::string> ReadOnlyNames;
   for (const auto &Declaration : Pipelines)
-    if (auto Error = parseDeclarations(ToReturn, Declaration, ReadOnlyNames);
+    if (auto Error = parseDeclarations(ToReturn,
+                                       Declaration,
+                                       ReadOnlyNames,
+                                       UsedContainers);
         Error)
       return std::move(Error);
 

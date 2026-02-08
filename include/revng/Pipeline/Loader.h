@@ -11,6 +11,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/YAMLTraits.h"
 
 #include "revng/Pipeline/Analysis.h"
@@ -200,7 +201,8 @@ private:
   llvm::Error
   parseDeclarations(Runner &Runner,
                     const PipelineDeclaration &Declaration,
-                    llvm::StringMap<std::string> &ReadOnlyNames) const;
+                    llvm::StringMap<std::string> &ReadOnlyNames,
+                    const llvm::StringSet<> &UsedContainers) const;
 
   llvm::Error
   parseStepDeclaration(Runner &Runner,

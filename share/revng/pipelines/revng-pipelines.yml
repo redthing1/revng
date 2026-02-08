@@ -643,6 +643,7 @@ Branches:
   - From: detect-stack-size
     Steps:
       - Name: segregate-stack-accesses
+        EnabledWhen: [clift]
         Pipes:
           - Type: llvm-pipe
             UsedContainers: [functions.bc.zstd]
@@ -673,6 +674,7 @@ Branches:
               - split-overflow-intrinsics
               - dce
       - Name: emit-c
+        EnabledWhen: [clift]
         Pipes:
           - Type: llvm-pipe
             UsedContainers: [functions.bc.zstd]
@@ -710,6 +712,7 @@ Branches:
             This artifact contains a C function for each function in the input
             program.
       - Name: emit-c-as-single-file
+        EnabledWhen: [clift]
         Pipes:
           - Type: decompile-to-single-file
             UsedContainers: [decompiled.tar.gz, decompiled.c]
