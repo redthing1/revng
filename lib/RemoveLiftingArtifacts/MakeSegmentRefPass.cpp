@@ -311,7 +311,13 @@ bool MakeSegmentRefPassImpl::runOnFunction(const model::Function &ModelFunction,
           }
 
           // Ensure we can map this symbol back to the model during codegen.
-          setMetaAddressMetadata(ReferencedFunction, FunctionEntryMDName, Address);
+          //
+          // `Address` is a generic address obtained from the raw constant (it
+          // might not carry the architecture-specific code type). Always attach
+          // the model function entry address instead.
+          setMetaAddressMetadata(ReferencedFunction,
+                                 FunctionEntryMDName,
+                                 It->second);
           // Avoid constant-folding to a ConstantExpr: downstream type inference
           // and codegen expect ptrtoint to be an instruction in the function.
           auto *Cast = llvm::CastInst::Create(llvm::Instruction::PtrToInt,
