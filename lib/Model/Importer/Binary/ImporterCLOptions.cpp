@@ -6,17 +6,18 @@
 #include "llvm/Support/CommandLine.h"
 
 #include "revng/Model/Importer/Binary/ImporterCLOptions.h"
-#include "revng/Support/CommandLine.h"
 
 using Enum = llvm::cl::OptionEnumValue;
 using SR = llvm::StringRef;
 namespace cl = llvm::cl;
 
+cl::OptionCategory BinaryImporterCategory("Binary Import Options", "");
+
 constexpr SR DescBA = "Base address where dynamic objects should be loaded.";
 cl::opt<uint64_t> BaseAddress("base",
                               cl::desc(DescBA),
                               cl::value_desc("address"),
-                              cl::cat(MainCategory),
+                              cl::cat(BinaryImporterCategory),
                               cl::init(0x400000));
 
 // TODO: This option could benefit from a better name,
@@ -26,7 +27,7 @@ cl::list<std::string> ImportDebugInfo("import-debug-info",
                                       cl::desc(DescImport),
                                       cl::value_desc("path"),
                                       cl::ZeroOrMore,
-                                      cl::cat(MainCategory));
+                                      cl::cat(BinaryImporterCategory));
 
 constexpr SR DescLevel = "Controls the debug information processing when "
                          "importing a binary.";
@@ -46,14 +47,14 @@ cl::opt<DebugInfoLevel> DebugInfo("debug-info",
                                   cl::desc(DescLevel),
                                   cl::value_desc("level"),
                                   cl::values(No, Yes, NoLib),
-                                  cl::cat(MainCategory),
+                                  cl::cat(BinaryImporterCategory),
                                   cl::init(DebugInfoLevel::Yes));
 
 constexpr SR DescRemote = "Allow fetching debug information from "
                           "canonical places or web.";
 cl::opt<bool> EnableRemoteDebugInfo("enable-remote-debug-info",
                                     cl::desc(DescRemote),
-                                    cl::cat(MainCategory),
+                                    cl::cat(BinaryImporterCategory),
                                     cl::init(false));
 
 ImporterOptions importerOptionsFromCommandLine() {
@@ -62,4 +63,3 @@ ImporterOptions importerOptionsFromCommandLine() {
                           .EnableRemoteDebugInfo = EnableRemoteDebugInfo,
                           .AdditionalDebugInfoPaths = ImportDebugInfo };
 }
-

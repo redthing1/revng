@@ -8,9 +8,9 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Error.h"
 
+#include "revng/Model/Importer/Binary/ImporterCLOptions.h"
 #include "revng/SDK/Decompile.h"
 #include "revng/Storage/CLPathOpt.h"
-#include "revng/Support/CommandLine.h"
 #include "revng/Support/Error.h"
 #include "revng/Support/InitRevng.h"
 
@@ -78,9 +78,8 @@ static revng::OutputPathOpt Output("o",
 static llvm::ExitOnError AbortOnError;
 
 int main(int argc, char *argv[]) {
-  // Also register the global revng options (e.g. importer knobs like --base,
-  // --debug-info) so sdk-decompile can be used for non-default layouts.
-  revng::InitRevng X(argc, argv, "", { &SDKCategory, &MainCategory });
+  // Show only SDK flags and the binary importer flags (e.g. --base, --debug-info).
+  revng::InitRevng X(argc, argv, "", { &SDKCategory, &BinaryImporterCategory });
 
   auto MaybeOutput = AbortOnError(Output.get());
   if (not MaybeOutput.has_value())

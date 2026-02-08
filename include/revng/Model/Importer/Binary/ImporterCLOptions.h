@@ -12,10 +12,11 @@
 // from ImporterOptions.h so that embedding/library users do not pull in global
 // llvm::cl state unless they explicitly opt into it.
 
+extern llvm::cl::OptionCategory BinaryImporterCategory;
+
 extern llvm::cl::opt<uint64_t> BaseAddress;
 extern llvm::cl::list<std::string> ImportDebugInfo;
 extern llvm::cl::opt<DebugInfoLevel> DebugInfo;
 extern llvm::cl::opt<bool> EnableRemoteDebugInfo;
 
 [[nodiscard]] ImporterOptions importerOptionsFromCommandLine();
-

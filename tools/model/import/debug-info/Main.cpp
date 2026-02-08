@@ -38,7 +38,10 @@ static cl::opt<std::string> OutputFilename("o",
                                            llvm::cl::value_desc("filename"));
 
 int main(int Argc, char *Argv[]) {
-  revng::InitRevng X(Argc, Argv, "", { &ThisToolCategory });
+  revng::InitRevng X(Argc,
+                     Argv,
+                     "",
+                     { &ThisToolCategory, &BinaryImporterCategory });
 
   // Open output.
   llvm::ExitOnError ExitOnError;
