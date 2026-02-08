@@ -13,9 +13,79 @@ if sys.prefix != sys.base_prefix:
     interpreter_path = os.path.realpath(sys.executable)
     os.execv(interpreter_path, [interpreter_path, __file__, *sys.argv[1:]])
 
-libpath = Path(sysconfig.get_path("purelib")).relative_to(sysconfig.get_config_var("base"))
-new_path = (Path(__file__) / "../.." / libpath).resolve()
-assert new_path.is_dir()
+# Find the prefix root and a suitable site-packages under it.
+root = Path(__file__).resolve().parent.parent
+
+def iter_site_packages_candidates() -> list[Path]:
+    candidates: list[Path] = []
+
+    # Prefer the sysconfig-derived relative path, but don't rely on it.
+    try:
+        purelib = Path(sysconfig.get_path("purelib"))
+        base = Path(sysconfig.get_config_var("base"))
+        libpath = purelib.relative_to(base)
+        candidates.append((root / libpath).resolve())
+    except Exception:
+        pass
+
+    major, minor = sys.version_info[:2]
+    pyver = f"python{major}.{minor}"
+    candidates.extend(
+        [
+            root / "lib" / pyver / "site-packages",
+            root / "lib64" / pyver / "site-packages",
+            root / "local" / "lib" / pyver / "site-packages",
+            root / "local" / "lib64" / pyver / "site-packages",
+        ]
+    )
+
+    # Preserve order and remove duplicates.
+    seen: set[Path] = set()
+    uniq: list[Path] = []
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            uniq.append(c)
+    return uniq
+
+
+new_path = None
+for candidate in iter_site_packages_candidates():
+    if candidate.is_dir() and (candidate / "revng").is_dir():
+        new_path = candidate
+        break
+
+# Prefer running compiled subcommands directly (SDK-friendly, no Python deps).
+libexec = root / "libexec" / "revng"
+if len(sys.argv) >= 2:
+    subcommand = sys.argv[1]
+    candidate = libexec / subcommand
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+        os.execv(str(candidate), [str(candidate), *sys.argv[2:]])
+
+if new_path is None:
+    # SDK-style builds might intentionally skip installing Python packages.
+    # In that case, fail gracefully (no traceback) for Python-only subcommands.
+
+    available = []
+    if libexec.is_dir():
+        available = sorted(
+            p.name for p in libexec.iterdir() if p.is_file() and os.access(p, os.X_OK)
+        )
+
+    sys.stderr.write(
+        "revng: Python packages not found in this prefix; "
+        "this looks like an SDK build.\n"
+    )
+    sys.stderr.write(
+        "revng: expected a site-packages directory containing the 'revng' "
+        f"package under: {root!s}\n"
+    )
+    if available:
+        sys.stderr.write("revng: available compiled subcommands:\n")
+        for name in available:
+            sys.stderr.write(f"  {name}\n")
+    sys.exit(1)
 
 if str(new_path) not in sys.path:
     if "PYTHONPATH" in os.environ:
@@ -28,8 +98,32 @@ if __name__ == "__main__":
     name = os.path.basename(sys.argv[0])
     assert name in ("revng", "revng2")
     if name == "revng":
-        from revng.internal.cli.revng import main
+        try:
+            from revng.internal.cli.revng import main
+        except ModuleNotFoundError as e:
+            sys.stderr.write(
+                "revng: Python dependencies for the full CLI are missing "
+                f"({e.name}).\n"
+            )
+            sys.stderr.write(
+                "revng: either use compiled subcommands under "
+                f"{libexec!s}, or run inside an environment that provides "
+                "revng's Python dependencies.\n"
+            )
+            sys.exit(1)
     else:
-        from revng.internal.cli.revng2 import main
+        try:
+            from revng.internal.cli.revng2 import main
+        except ModuleNotFoundError as e:
+            sys.stderr.write(
+                "revng2: Python dependencies for the full CLI are missing "
+                f"({e.name}).\n"
+            )
+            sys.stderr.write(
+                "revng2: either use compiled subcommands under "
+                f"{libexec!s}, or run inside an environment that provides "
+                "revng's Python dependencies.\n"
+            )
+            sys.exit(1)
 
     sys.exit(main())
