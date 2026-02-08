@@ -7,12 +7,30 @@
 #include <set>
 #include <utility>
 
+#include "llvm/Support/Path.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SHA256.h"
 
 #include "revng/Support/Error.h"
 #include "revng/Support/RuntimeDeps.h"
+#include "revng/TupleTree/TupleLikeTraits.h"
 
 namespace revng::sdk::direct {
+
+static model::BinaryReference makeReference(model::Binary &Binary,
+                                            size_t Index) {
+  using Fields = TupleLikeTraits<model::Binary>::Fields;
+  TupleTreePath BinaryPath;
+  BinaryPath.push_back(static_cast<size_t>(Fields::Binaries));
+  BinaryPath.push_back(Index);
+  return model::BinaryReference{ &Binary, BinaryPath };
+}
+
+static std::string sha256Hex(llvm::ArrayRef<char> Data) {
+  const uint8_t *Ptr = reinterpret_cast<const uint8_t *>(Data.data());
+  std::array<uint8_t, 32> Hash = llvm::SHA256::hash({ Ptr, Data.size() });
+  return llvm::toHex(Hash, /*LowerCase=*/true);
+}
 
 static llvm::Expected<MetaAddress>
 parseFunctionEntry(llvm::StringRef Text, model::Architecture::Values Arch) {
@@ -72,16 +90,27 @@ parseFunctionEntries(const model::Binary &Binary,
 
 llvm::Expected<::Model> importModel(llvm::StringRef BinaryPath,
                                     const ImporterOptions &Options) {
-  auto MaybeBuffer = llvm::MemoryBuffer::getFileOrSTDIN(BinaryPath,
-                                                        /*IsText=*/false,
-                                                        /*RequiresNullTerminator=*/false);
+  auto MaybeBuffer = llvm::MemoryBuffer::getFile(BinaryPath,
+                                                 /*IsText=*/false,
+                                                 /*RequiresNullTerminator=*/false);
   if (not MaybeBuffer)
     return llvm::createStringError(MaybeBuffer.getError(),
                                    "failed to read binary '%s'",
                                    BinaryPath.str().c_str());
 
+  const llvm::MemoryBuffer &Buffer = **MaybeBuffer;
+  llvm::ArrayRef<char> Data(Buffer.getBufferStart(), Buffer.getBufferSize());
+  std::string Hash = sha256Hex(Data);
+
   TupleTree<model::Binary> Imported;
+  Imported->Binaries().insert(model::BinaryIdentifier(0,
+                                                      Hash,
+                                                      Data.size(),
+                                                      llvm::sys::path::filename(BinaryPath)
+                                                        .str()));
+
   model::BinaryReference BinaryReference;
+  BinaryReference = makeReference(*Imported.get(), 0);
   if (llvm::Error Err = ::importBinary(Imported,
                                        **MaybeBuffer,
                                        BinaryPath,
