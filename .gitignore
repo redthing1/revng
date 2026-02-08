@@ -1,2 +1,7 @@
+/notes
+*.o
+/build-*
+/debug*
 .clang-format
 .mypy_cache
+__pycache__
