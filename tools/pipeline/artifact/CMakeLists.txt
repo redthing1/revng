@@ -4,4 +4,4 @@
 
 revng_add_executable(artifact Main.cpp)
 
-target_link_libraries(artifact revngPipeline revngPipes)
+target_link_libraries(artifact revngPipeline revngPipes revngRuntimeDeps)

@@ -10,6 +10,7 @@
 #include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/PluginLoader.h"
+#include "llvm/Support/Progress.h"
 #include "llvm/Support/raw_os_ostream.h"
 
 #include "revng/Model/LoadModelPass.h"
@@ -27,6 +28,7 @@
 #include "revng/Pipes/PipelineManager.h"
 #include "revng/Pipes/ToolCLOptions.h"
 #include "revng/Support/InitRevng.h"
+#include "revng/Support/RuntimeDeps.h"
 
 namespace cl = llvm::cl;
 using namespace pipeline;
@@ -82,6 +84,7 @@ int main(int argc, char *argv[]) {
   using revng::FilePath;
 
   revng::InitRevng X(argc, argv, "", { &MainCategory });
+  revng::runtime::ensureRuntimeDependenciesLoaded();
 
   Registry::runAllInitializationRoutines();
 
