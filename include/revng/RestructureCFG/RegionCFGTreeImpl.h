@@ -513,7 +513,17 @@ inline void RegionCFG<NodeT>::untangle() {
     IFPDT.recalculate(Graph);
 
     // Update the postdominator
-    BasicBlockNodeT *PostDominator = IFPDT[Conditional]->getIDom()->getBlock();
+    // IFPDT is computed on an edge-filtered view of the graph: some nodes may be
+    // absent and even present nodes might not have an immediate post-dominator.
+    BasicBlockNodeT *PostDominator = [&]() -> BasicBlockNodeT * {
+      auto *DTNode = IFPDT[Conditional];
+      if (DTNode == nullptr)
+        return nullptr;
+      auto *IDom = DTNode->getIDom();
+      if (IDom == nullptr)
+        return nullptr;
+      return IDom->getBlock();
+    }();
 
     // Ensure that we have both the successors.
     revng_assert(Conditional->successor_size() == 2);
@@ -799,7 +809,18 @@ inline bool RegionCFG<NodeT>::inflate() {
 
       // Add the conditional node to the set of nodes processed by the inflate.
       ConditionalNodesSet.insert(Node);
-      BasicBlockNode<NodeT> *PostDom = IFPDT[Node]->getIDom()->getBlock();
+      // IFPDT is computed on an edge-filtered view of the graph: some nodes may
+      // be absent and even present nodes might not have an immediate
+      // post-dominator.
+      BasicBlockNode<NodeT> *PostDom = [&]() -> BasicBlockNode<NodeT> * {
+        auto *DTNode = IFPDT[Node];
+        if (DTNode == nullptr)
+          return nullptr;
+        auto *IDom = DTNode->getIDom();
+        if (IDom == nullptr)
+          return nullptr;
+        return IDom->getBlock();
+      }();
       bool New = ConditionalToCombEnd.insert({ Node, PostDom }).second;
       revng_assert(New);
 
@@ -876,7 +897,18 @@ inline bool RegionCFG<NodeT>::inflate() {
       addPlainEdge(EdgeDescriptor(DummyCase, Case));
 
       ConditionalNodesSet.insert(DummyCase);
-      BasicBlockNode<NodeT> *PostDom = IFPDT[Switch]->getIDom()->getBlock();
+      // IFPDT is computed on an edge-filtered view of the graph: some nodes may
+      // be absent and even present nodes might not have an immediate
+      // post-dominator.
+      BasicBlockNode<NodeT> *PostDom = [&]() -> BasicBlockNode<NodeT> * {
+        auto *DTNode = IFPDT[Switch];
+        if (DTNode == nullptr)
+          return nullptr;
+        auto *IDom = DTNode->getIDom();
+        if (IDom == nullptr)
+          return nullptr;
+        return IDom->getBlock();
+      }();
       // Combing of switch cases continues until the post dominator of the
       // switch, not until the post dominator of the case.
       bool New = ConditionalToCombEnd.insert({ DummyCase, PostDom }).second;
@@ -1346,7 +1378,18 @@ inline void RegionCFG<NodeT>::weave() {
         CaseSet.insert(Successor);
 
       // Find the postdominator of the switch.
-      BBNodeT *PostDom = IFPDT[Switch]->getIDom()->getBlock();
+      // IFPDT is computed on an edge-filtered view of the graph: some nodes may
+      // be absent and even present nodes might not have an immediate
+      // post-dominator.
+      BBNodeT *PostDom = [&]() -> BBNodeT * {
+        auto *DTNode = IFPDT[Switch];
+        if (DTNode == nullptr)
+          return nullptr;
+        auto *IDom = DTNode->getIDom();
+        if (IDom == nullptr)
+          return nullptr;
+        return IDom->getBlock();
+      }();
 
       // Iterate over all the nodes "in the body" of the switch in reverse post
       // order.
