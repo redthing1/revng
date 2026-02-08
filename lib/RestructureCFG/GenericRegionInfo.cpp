@@ -2,10 +2,16 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+#include <memory>
+#include <type_traits>
+#include <vector>
+
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/GenericCycleImpl.h"
 #include "llvm/ADT/GenericCycleInfo.h"
 #include "llvm/ADT/GraphTraits.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Function.h"
@@ -30,71 +36,175 @@ static ValueT mapAt(llvm::SmallDenseMap<KeyT, ValueT> &Map, KeyT Key) {
   return MapIt->second;
 }
 
-/// Helper function to obtain a `GenericCycleInfo` analysis
-template<class GraphT>
-static GenericCycleInfo<SSAContext, GraphT> getGenericCycleInfo(GraphT &F) {
-  // We instantiate the `GenericCycle` analysis and wrap the results in
-  // the region objects
-  GenericCycleInfo<SSAContext, GraphT> GCI;
-  GCI.compute(*F);
+namespace {
 
-  return GCI;
-}
+// LLVM 21 removed the `GenericCycleInfo<ContextT, GraphT>` specialization used
+// by revng to compute cycles on custom CFG "views" (e.g. the ScopeGraph).
+//
+// We still want to reuse LLVM's cycle discovery algorithm, but drive it with
+// ScopeGraph successors/predecessors instead of the standard CFG edges.
+// We do so by wrapping BasicBlocks in a lightweight node type and providing
+// `llvm::successors/predecessors` overloads for it.
+class ScopeGraphCycleBlock {
+private:
+  llvm::BasicBlock *BB = nullptr;
+  llvm::SmallVector<ScopeGraphCycleBlock *, 4> Succs;
+  llvm::SmallVector<ScopeGraphCycleBlock *, 4> Preds;
 
-/// Template function specialization to obtain the `GenericCycleInfo` analysis
-/// starting from a `Scope<llvm::Function *>` parameter, since we need to unwrap
-/// the `Graph` object from the `Scope` wrapper class
-template<>
-GenericCycleInfo<SSAContext, Scope<llvm::Function *>>
-getGenericCycleInfo(Scope<llvm::Function *> &SG) {
-  // We instantiate the `GenericCycle` analysis and wrap the results in
-  // the region objects
-  GenericCycleInfo<SSAContext, Scope<llvm::Function *>> GCI;
-  GCI.compute(*SG.Graph);
+public:
+  explicit ScopeGraphCycleBlock(llvm::BasicBlock *BB) : BB(BB) {}
 
-  return GCI;
-}
+  llvm::BasicBlock *getOriginal() const { return BB; }
 
-template<class GraphT, class GT>
-void GenericRegionInfo<GraphT, GT>::initializeRegions(GraphT F) {
+  auto successors() const {
+    return llvm::make_range(Succs.begin(), Succs.end());
+  }
 
-  // Obtain the `GenericCycleInfo` analysis
-  auto GCI = getGenericCycleInfo(F);
+  auto predecessors() const {
+    return llvm::make_range(Preds.begin(), Preds.end());
+  }
 
-  using CycleT = GenericCycleInfo<SSAContext, GraphT>::CycleT;
-  using Region = GenericRegion<NodeT>;
-  llvm::SmallDenseMap<const CycleT *, Region *> CycleToRegionMap;
+  unsigned succ_size() const { return Succs.size(); }
 
-  // Populate the `Regions` with the identified regions
-  for (const auto *TLC : GCI.toplevel_cycles()) {
-    for (const auto *Cycle : depth_first(TLC)) {
+  void addSuccessor(ScopeGraphCycleBlock *S) { Succs.push_back(S); }
+  void addPredecessor(ScopeGraphCycleBlock *P) { Preds.push_back(P); }
+};
 
-      // Create a new `Region`
-      Regions.push_back(std::make_unique<Region>());
-      Region *CurrentRegion = Regions.back().get();
+class ScopeGraphCycleFunction {
+private:
+  llvm::Function *F = nullptr;
+  std::vector<std::unique_ptr<ScopeGraphCycleBlock>> BlocksStorage;
+  llvm::DenseMap<llvm::BasicBlock *, ScopeGraphCycleBlock *> Map;
 
-      // Populate the mapping between the `CycleT` object and our custom
-      // `Region`
-      CycleToRegionMap[Cycle] = CurrentRegion;
+public:
+  explicit ScopeGraphCycleFunction(llvm::Function &F) : F(&F) {
+    BlocksStorage.reserve(F.size());
 
-      // Iterate over all the blocks and insert them in the `CurrentRegion`
-      for (auto *Block : Cycle->blocks()) {
-        CurrentRegion->insertBlock(Block);
+    // Create stable nodes for all blocks.
+    for (llvm::BasicBlock &BB : F) {
+      BlocksStorage.push_back(std::make_unique<ScopeGraphCycleBlock>(&BB));
+      Map[&BB] = BlocksStorage.back().get();
+    }
+
+    // Build adjacency lists according to the ScopeGraph view.
+    for (llvm::BasicBlock &BB : F) {
+      auto *Node = Map.lookup(&BB);
+      revng_assert(Node != nullptr);
+
+      llvm::SmallPtrSet<llvm::BasicBlock *, 8> SeenSuccBBs;
+      for (llvm::BasicBlock *SuccBB : ::detail::getScopeGraphSuccessors(&BB)) {
+        if (!SeenSuccBBs.insert(SuccBB).second)
+          continue;
+        auto *Succ = Map.lookup(SuccBB);
+        revng_assert(Succ != nullptr);
+        Node->addSuccessor(Succ);
+      }
+
+      llvm::SmallPtrSet<llvm::BasicBlock *, 8> SeenPredBBs;
+      for (llvm::BasicBlock *PredBB : ::detail::getScopeGraphPredecessors(&BB)) {
+        if (!SeenPredBBs.insert(PredBB).second)
+          continue;
+        auto *Pred = Map.lookup(PredBB);
+        revng_assert(Pred != nullptr);
+        Node->addPredecessor(Pred);
       }
     }
   }
 
-  // Populate the children regions. We need to perform this operation in a
-  // separate step in order to have already all the created regions in the step
-  // above
-  for (const auto *TLC : GCI.toplevel_cycles()) {
-    for (const auto *Cycle : depth_first(TLC)) {
-      auto *Region = mapAt(CycleToRegionMap, Cycle);
-      for (const auto *Child : Cycle->children()) {
-        auto *ChildRegion = mapAt(CycleToRegionMap, Child);
-        Region->addChild(ChildRegion);
+  llvm::StringRef getName() const { return F->getName(); }
+
+  ScopeGraphCycleBlock &front() const {
+    auto *Entry = Map.lookup(&F->front());
+    revng_assert(Entry != nullptr);
+    return *Entry;
+  }
+};
+
+struct ScopeGraphCycleContext {
+  using BlockT = ScopeGraphCycleBlock;
+  using FunctionT = ScopeGraphCycleFunction;
+
+  const FunctionT *F = nullptr;
+
+  ScopeGraphCycleContext() = default;
+  explicit ScopeGraphCycleContext(const FunctionT *F) : F(F) {}
+
+  const FunctionT *getFunction() const { return F; }
+
+  llvm::Printable print(const BlockT *Block) const {
+    return llvm::Printable([Block](llvm::raw_ostream &Out) {
+      Block->getOriginal()->printAsOperand(Out, false);
+    });
+  }
+};
+
+// Provide `successors`/`predecessors` overloads for ADL lookup by LLVM's
+// `GenericCycleInfo` implementation.
+inline auto successors(ScopeGraphCycleBlock *B) { return B->successors(); }
+inline auto predecessors(ScopeGraphCycleBlock *B) { return B->predecessors(); }
+inline unsigned succ_size(const ScopeGraphCycleBlock *B) { return B->succ_size(); }
+
+} // namespace
+
+template<class GraphT, class GT>
+void GenericRegionInfo<GraphT, GT>::initializeRegions(GraphT F) {
+
+  using Region = GenericRegion<NodeT>;
+  using CycleToRegionMapT = llvm::SmallDenseMap<const void *, Region *>;
+  CycleToRegionMapT CycleToRegionMap;
+
+  // Helper to populate Regions and CycleToRegionMap from a CycleInfo-like
+  // object, given a block unwrapping function.
+  auto PopulateRegions = [&](auto &GCI, auto &&UnwrapBlock) {
+    using CycleT = typename std::remove_reference_t<decltype(GCI)>::CycleT;
+
+    // Populate the `Regions` with the identified regions
+    for (const auto *TLC : GCI.toplevel_cycles()) {
+      for (const auto *Cycle : depth_first(TLC)) {
+
+        // Create a new `Region`
+        Regions.push_back(std::make_unique<Region>());
+        Region *CurrentRegion = Regions.back().get();
+
+        // Populate the mapping between the `CycleT` object and our custom
+        // `Region`
+        CycleToRegionMap[static_cast<const void *>(Cycle)] = CurrentRegion;
+
+        // Iterate over all the blocks and insert them in the `CurrentRegion`
+        for (auto *Block : Cycle->blocks()) {
+          CurrentRegion->insertBlock(UnwrapBlock(Block));
+        }
       }
     }
+
+    // Populate the children regions. We need to perform this operation in a
+    // separate step in order to have already all the created regions in the
+    // step above
+    for (const auto *TLC : GCI.toplevel_cycles()) {
+      for (const auto *Cycle : depth_first(TLC)) {
+        auto *Region = mapAt(CycleToRegionMap,
+                             static_cast<const void *>(Cycle));
+        for (const auto *Child : Cycle->children()) {
+          auto *ChildRegion = mapAt(CycleToRegionMap,
+                                    static_cast<const void *>(Child));
+          Region->addChild(ChildRegion);
+        }
+      }
+    }
+  };
+
+  if constexpr (std::is_same_v<GraphT, llvm::Function *>) {
+    llvm::GenericCycleInfo<llvm::SSAContext> GCI;
+    GCI.compute(*F);
+    PopulateRegions(GCI, [](llvm::BasicBlock *BB) { return BB; });
+  } else if constexpr (std::is_same_v<GraphT, Scope<llvm::Function *>>) {
+    ScopeGraphCycleFunction SGF(*F.Graph);
+    llvm::GenericCycleInfo<ScopeGraphCycleContext> GCI;
+    GCI.compute(SGF);
+    PopulateRegions(GCI,
+                    [](ScopeGraphCycleBlock *B) { return B->getOriginal(); });
+  } else {
+    static_assert(sizeof(GraphT) == 0, "Unsupported GraphT for GenericRegionInfo");
   }
 }
 
