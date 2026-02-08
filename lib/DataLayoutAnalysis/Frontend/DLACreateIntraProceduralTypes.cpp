@@ -757,6 +757,10 @@ bool Builder::createIntraproceduralTypes(llvm::Module &M,
     auto FTags = FunctionTags::TagsSet::from(&F);
     if (F.isIntrinsic() or not FTags.contains(FunctionTags::Isolated))
       continue;
+    // DLA relies on ScalarEvolution and on iterating the function body. Isolated
+    // functions without a body provide no intraprocedural information anyway.
+    if (F.isDeclaration())
+      continue;
     revng_assert(not F.isVarArg());
 
     ILA.setupForProcessingFunction(MP, &F);

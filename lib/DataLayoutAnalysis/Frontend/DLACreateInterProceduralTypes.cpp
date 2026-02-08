@@ -29,8 +29,6 @@ using TSBuilder = DLATypeSystemLLVMBuilder;
 bool TSBuilder::createInterproceduralTypes(llvm::Module &M,
                                            const model::Binary &Model) {
   for (const Function &F : M.functions()) {
-
-    auto FTags = FunctionTags::TagsSet::from(&F);
     // Skip intrinsics
     if (F.isIntrinsic())
       continue;
@@ -45,6 +43,18 @@ bool TSBuilder::createInterproceduralTypes(llvm::Module &M,
     const model::TypeDefinition *Prototype = nullptr;
     if (FunctionTags::Isolated.isTagOf(&F)) {
       const model::Function *ModelFunc = llvmToModelFunction(Model, F);
+      if (ModelFunc == nullptr) {
+        MetaAddress Entry = getMetaAddressMetadata(&F, FunctionEntryMDName);
+        dbg << "DLA: isolated function has no corresponding model::Function.\n";
+        dbg << "  function: " << F.getName().str() << "\n";
+        dbg << "  revng.function.entry: " << Entry.toString() << "\n";
+        dbg << "  isDeclaration: " << (F.isDeclaration() ? "yes" : "no") << "\n";
+        dbg << "  tags:";
+        for (const FunctionTags::Tag *T : FunctionTags::TagsSet::from(&F))
+          dbg << " " << T->name().str();
+        dbg << "\n";
+        revng_abort("DLA expected all isolated functions to map to a model function.");
+      }
       Prototype = Model.prototypeOrDefault(ModelFunc->prototype());
     } else {
       llvm::StringRef SymbolName = F.getName().drop_front(strlen("dynamic_"));
