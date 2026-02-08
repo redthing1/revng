@@ -13,6 +13,8 @@ extern "C" {
 #include <chrono>
 #include <fstream>
 
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/Progress.h"
