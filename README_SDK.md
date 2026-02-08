@@ -21,7 +21,7 @@ Direct (no YAML / no plugin loading):
 Pipeline-backed (YAML + plugin loading; needed for decompilation/recompilable archives):
 
 - `include/revng/SDK/Decompile.h` (public API)
-- `lib/SDK/Decompile.cpp` (implementation)
+- `lib/SDK/Decompile*.cpp` (implementation)
 - `tools/sdk/Main.cpp` (reference CLI: `sdk-decompile`)
 
 This is intentionally **not** a narrow facade. It is a thin convenience layer
@@ -209,6 +209,10 @@ build-sdk-cpp-clang/libexec/revng/sdk-lift -o /var/tmp/lift.bc /path/to/binary
 build-sdk-cpp-clang/libexec/revng/sdk-cfg --function-entry <entry> -o /var/tmp/cfg.tar.gz /path/to/binary
 build-sdk-cpp-clang/libexec/revng/sdk-isolate --function-entry <entry> -o /var/tmp/isolated.tar.gz /path/to/binary
 ```
+
+All direct SDK tools also accept `--resource-root <prefix>` (repeatable) to
+extend the search roots for `share/revng/...` runtime resources when running
+outside a revng build/install layout.
 
 ## Running the reference CLI: `sdk-decompile`
 
