@@ -525,6 +525,7 @@ Branches:
         Analyses:
           - Name: import-from-c
             Type: import-from-c
+            Optional: true
             UsedContainers: []
             Docs: |-
               This analysis, given a snippet of C code representing an
@@ -532,6 +533,7 @@ Branches:
               replacing an existing type.
           - Name: llm-rename
             Type: llm-rename
+            Optional: true
             UsedContainers: [decompiled.tar.gz]
             Docs: |-
               Rename the specified function(s) bodies using an LLM

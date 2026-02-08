@@ -28,6 +28,23 @@ target_link_libraries(sdk-cfg revngSDKDirect)
 revng_add_executable(sdk-isolate Isolate.cpp)
 target_link_libraries(sdk-isolate revngSDKDirect)
 
+# The SDK demo tools are expected to be runnable from the build tree. Ensure
+# required runtime resources (share/revng/*) are available even if the user
+# builds only `sdk-*` targets rather than the default `all` target.
+set(SDK_DEMO_TOOLS sdk-import sdk-lift sdk-cfg sdk-isolate sdk-decompile)
+foreach(T IN LISTS SDK_DEMO_TOOLS)
+  add_dependencies(${T} copy_share)
+  add_dependencies(${T} helper-list)
+endforeach()
+
+# When using extracted/prebuilt runtime resources, this target copies helper
+# modules (and optionally libtcg-*.so) into the build tree so lifting works.
+if(TARGET revng-runtime-resources)
+  foreach(T IN ITEMS sdk-lift sdk-cfg sdk-isolate sdk-decompile)
+    add_dependencies(${T} revng-runtime-resources)
+  endforeach()
+endif()
+
 if(REVNG_BUILD_TESTS)
   revng_add_test(
     NAME

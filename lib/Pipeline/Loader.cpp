@@ -66,7 +66,11 @@ Error Loader::parseStepDeclaration(Runner &Runner,
     if (!MaybeInvocation)
       return MaybeInvocation.takeError();
 
-    JustAdded.addAnalysis(SingleAnalysis.Name, std::move(*MaybeInvocation));
+    if (not MaybeInvocation->has_value())
+      continue;
+
+    JustAdded.addAnalysis(SingleAnalysis.Name,
+                          std::move(MaybeInvocation->value()));
   }
 
   return Error::success();
@@ -103,17 +107,19 @@ Loader::parseLLVMPass(const PipeInvocation &Invocation) const {
   return PipeWrapper::make(std::move(ToInsert), Invocation.UsedContainers);
 }
 
-llvm::Expected<AnalysisWrapper>
+llvm::Expected<std::optional<AnalysisWrapper>>
 Loader::parseAnalysis(const AnalysisDeclaration &Declaration) const {
   auto It = KnownAnalysisTypes.find(Declaration.Type);
   if (It == KnownAnalysisTypes.end()) {
+    if (Declaration.Optional)
+      return std::optional<AnalysisWrapper>();
     auto *Message = "While parsing analyses: no known analysis named name %s";
     return revng::createError(Message, Declaration.Type.c_str());
   }
   auto &Entry = It->second;
   auto ToReturn = AnalysisWrapper(Entry, Declaration.UsedContainers);
   ToReturn->setUserBoundName(Declaration.Name);
-  return ToReturn;
+  return std::optional<AnalysisWrapper>(std::move(ToReturn));
 }
 
 llvm::Expected<PipeWrapper>
@@ -361,8 +367,10 @@ Loader::load(llvm::ArrayRef<PipelineDeclaration> Pipelines) const {
       auto MaybeAnalysis = parseAnalysis(Analysis);
       if (not MaybeAnalysis)
         return MaybeAnalysis.takeError();
+      if (not MaybeAnalysis->has_value())
+        continue;
       ToReturn.getStep(Analysis.Step)
-        .addAnalysis(Analysis.Name, std::move(*MaybeAnalysis));
+        .addAnalysis(Analysis.Name, std::move(MaybeAnalysis->value()));
     }
 
   for (const auto &Declaration : Pipelines)

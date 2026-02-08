@@ -38,6 +38,7 @@ struct AnalysisDeclaration {
   std::string Name;
   std::string Step;
   std::string Docs;
+  bool Optional = false;
 };
 
 struct PipeInvocation {
@@ -215,7 +216,7 @@ private:
   parseInvocation(Step &Step,
                   const PipeInvocation &Invocation,
                   const llvm::StringMap<std::string> &ReadOnlyNames) const;
-  llvm::Expected<AnalysisWrapper>
+  llvm::Expected<std::optional<AnalysisWrapper>>
   parseAnalysis(const AnalysisDeclaration &Declaration) const;
   llvm::Error
   parseContainerDeclaration(Runner &Runner,
@@ -316,6 +317,7 @@ struct llvm::yaml::MappingTraits<pipeline::AnalysisDeclaration> {
   static void mapping(IO &TheIO, pipeline::AnalysisDeclaration &Info) {
     TheIO.mapRequired("Name", Info.Name);
     TheIO.mapRequired("Type", Info.Type);
+    TheIO.mapOptional("Optional", Info.Optional);
     TheIO.mapOptional("Step", Info.Step);
     TheIO.mapOptional("Docs", Info.Docs);
     TheIO.mapRequired("UsedContainers", Info.UsedContainers);
