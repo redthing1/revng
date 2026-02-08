@@ -4,7 +4,6 @@
 
 #include "revng/Lift/LibTcg.h"
 #include "revng/Lift/Lift.h"
-#include "revng/Support/CommandLine.h"
 #include "revng/Support/IRHelpers.h"
 #include "revng/Support/ResourceFinder.h"
 
@@ -12,21 +11,6 @@
 
 #include "CodeGenerator.h"
 #include "PostLiftVerifyPass.h"
-
-using namespace llvm::cl;
-
-namespace {
-const char *EntryDescStr = "virtual address of the entry point where to start";
-opt<unsigned long long> EntryPointAddress("entry",
-                                          desc(EntryDescStr),
-                                          value_desc("address"),
-                                          cat(MainCategory));
-alias A1("e",
-         desc("Alias for -entry"),
-         aliasopt(EntryPointAddress),
-         cat(MainCategory));
-
-} // namespace
 
 char LiftPass::ID;
 
@@ -90,12 +74,9 @@ bool LiftPass::runOnModule(llvm::Module &M) {
                           Paths.EarlyLinked,
                           Model->Architecture());
 
-  std::optional<uint64_t> EntryPointAddressOptional;
-  if (EntryPointAddress.getNumOccurrences() != 0)
-    EntryPointAddressOptional = EntryPointAddress;
   T.advance("Translate", true);
 
-  Generator.translate(TheLibTcg, EntryPointAddressOptional);
+  Generator.translate(TheLibTcg, std::nullopt);
 
   sortModule(M);
 
@@ -154,14 +135,10 @@ CustomInvalidationData Lift::run() {
                           Model,
                           Paths.LibHelpers,
                           Paths.EarlyLinked,
-                          model::Architecture::x86_64);
-
-  std::optional<uint64_t> EntryPointAddressOptional;
-  if (EntryPointAddress.getNumOccurrences() != 0)
-    EntryPointAddressOptional = EntryPointAddress;
+                          Model->Architecture());
   T.advance("Translate", true);
 
-  Generator.translate(TheLibTcg, EntryPointAddressOptional);
+  Generator.translate(TheLibTcg, std::nullopt);
 
   T.advance("Sort Module", true);
   sortModule(Module);
