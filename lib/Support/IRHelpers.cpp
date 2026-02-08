@@ -219,12 +219,31 @@ void moveBlocksInto(Function &OldFunction, Function &NewFunction) {
 Function &recreateWithoutBody(Function &OldFunction, FunctionType &NewType) {
   // Recreate the function as similar as possible
   auto *NewFunction = Function::Create(&NewType,
-                                       GlobalValue::ExternalLinkage,
+                                       OldFunction.getLinkage(),
                                        "",
                                        OldFunction.getParent());
-  NewFunction->takeName(&OldFunction);
   NewFunction->copyAttributesFrom(&OldFunction);
   NewFunction->copyMetadata(&OldFunction, 0);
+
+  // Some revng analyses rely on function-level metadata (e.g.
+  // `revng.function.entry`) to map LLVM functions back to model::Function
+  // instances.  Ensure this metadata survives function recreation even if some
+  // LLVM helpers drop or fail to copy it.
+  MetaAddress Entry = getMetaAddressMetadata(&OldFunction, FunctionEntryMDName);
+  if (Entry.isValid())
+    setMetaAddressMetadata(NewFunction, FunctionEntryMDName, Entry);
+
+  // Preserve ABI-relevant properties that are not copied by copyAttributesFrom.
+  NewFunction->setCallingConv(OldFunction.getCallingConv());
+  NewFunction->setDSOLocal(OldFunction.isDSOLocal());
+  NewFunction->setVisibility(OldFunction.getVisibility());
+  NewFunction->setUnnamedAddr(OldFunction.getUnnamedAddr());
+  if (OldFunction.hasSection())
+    NewFunction->setSection(OldFunction.getSection());
+  if (OldFunction.hasComdat())
+    NewFunction->setComdat(OldFunction.getComdat());
+
+  NewFunction->takeName(&OldFunction);
 
   return *NewFunction;
 }
