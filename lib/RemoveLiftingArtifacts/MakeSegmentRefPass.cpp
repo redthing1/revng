@@ -297,10 +297,28 @@ bool MakeSegmentRefPassImpl::runOnFunction(const model::Function &ModelFunction,
         if (It != FunctionEntries.end() and not DisableFunctionPointers) {
           auto Name = llvmName(Binary.Functions().at(It->second));
 
-          auto *ReferencedFunction = M.getFunction(Name);
-          revng_assert(ReferencedFunction != nullptr);
-          ConstantOpReplacement = IRB.CreatePtrToInt(ReferencedFunction,
-                                                     Op->getType());
+          // In restricted/partial pipelines we might not have bodies (or even
+          // declarations) for every function referenced by address constants.
+          // Create a best-effort external declaration so the IR stays valid.
+          llvm::Function *ReferencedFunction = M.getFunction(Name);
+          if (ReferencedFunction == nullptr) {
+            llvm::FunctionType *AnyTy = llvm::FunctionType::get(IRB.getVoidTy(),
+                                                                false);
+            ReferencedFunction = llvm::Function::Create(AnyTy,
+                                                        llvm::GlobalValue::ExternalLinkage,
+                                                        Name,
+                                                        &M);
+          }
+
+          // Ensure we can map this symbol back to the model during codegen.
+          setMetaAddressMetadata(ReferencedFunction, FunctionEntryMDName, Address);
+          // Avoid constant-folding to a ConstantExpr: downstream type inference
+          // and codegen expect ptrtoint to be an instruction in the function.
+          auto *Cast = llvm::CastInst::Create(llvm::Instruction::PtrToInt,
+                                              ReferencedFunction,
+                                              Op->getType());
+          IRB.Insert(Cast);
+          ConstantOpReplacement = Cast;
         } else {
 
           // Then we we check to see if the address matches a string literal.
@@ -349,7 +367,7 @@ bool MakeSegmentRefPassImpl::runOnFunction(const model::Function &ModelFunction,
             // If it cannot be emitted as a string literal we emit it as a
             // reference to a segment.
 
-            IntegerType *OperandType = LeafConstOp->getType();
+            auto *OperandType = cast<IntegerType>(LeafConstOp->getType());
             FunctionTags::SegmentRefPoolKey Key = { StartAddress,
                                                     VirtualSize,
                                                     OperandType };
