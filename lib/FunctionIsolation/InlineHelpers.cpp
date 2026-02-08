@@ -14,6 +14,8 @@
 #include "revng/ADT/Queue.h"
 #include "revng/BasicAnalyses/GeneratedCodeBasicInfo.h"
 #include "revng/FunctionIsolation/InlineHelpers.h"
+#include "revng/Model/Architecture.h"
+#include "revng/Model/LoadModelPass.h"
 #include "revng/Support/IRHelpers.h"
 #include "revng/Support/OpaqueFunctionsPool.h"
 #include "revng/Support/ResourceFinder.h"
@@ -106,40 +108,61 @@ static void dropDebugOrPseudoInst(Function *F) {
 }
 
 void InlineHelpers::run(Function *F) {
-  // Since all the helpers have been already inlined the `doInline` function can
-  // be called only once to inline all the helper functions.
-  doInline(F);
+  // Helper functions in the `revng_inline` section can call other helpers from
+  // the same section (e.g. `idiv64` -> `div64`). Inline until we reach a
+  // fixpoint so that no `revng_inline` calls are left in isolated functions.
+  while (doInline(F))
+    ;
   dropDebugOrPseudoInst(F);
 }
 
-void InlineHelpersPass::linkRequiredHelpers(llvm::Module &M) {
-  NamedMDNode *Node = M.getNamedMetadata(QemuArchitectureMD);
-  revng_assert(Node != nullptr);
-  revng_assert(Node->getNumOperands() > 0);
+void InlineHelpersPass::getAnalysisUsage(llvm::AnalysisUsage &AU) const {
+  AU.addRequired<LoadModelWrapperPass>();
+}
 
-  // Multiple linkings could have lead to this node having more than one
-  // operand, if so check that they are all the same.
-  llvm::StringSet Strings;
-  for (size_t I = 0; I < Node->getNumOperands(); I++) {
-    revng_assert(Node->getOperand(0)->getNumOperands() == 1);
-    const MDOperand &StringNode = Node->getOperand(0)->getOperand(0);
-    Strings.insert(cast<MDString>(StringNode)->getString());
+void InlineHelpersPass::linkRequiredHelpers(llvm::Module &M) {
+  StringRef ArchName;
+
+  if (NamedMDNode *Node = M.getNamedMetadata(QemuArchitectureMD);
+      Node != nullptr and Node->getNumOperands() > 0) {
+    // Multiple linkings could have lead to this node having more than one
+    // operand, if so check that they are all the same.
+    llvm::StringSet Strings;
+    for (unsigned I = 0; I < Node->getNumOperands(); I++) {
+      MDNode *Op = Node->getOperand(I);
+      revng_check(Op != nullptr and Op->getNumOperands() == 1);
+      const MDOperand &StringNode = Op->getOperand(0);
+      Strings.insert(cast<MDString>(StringNode)->getString());
+    }
+
+    revng_check(Strings.size() == 1,
+                "QEMU helpers of multiple architectures were linked inside the "
+                "module");
+    ArchName = Strings.begin()->first();
+  } else {
+    // Isolated modules might not carry the QEMU arch metadata. Fall back to the
+    // model architecture (load-model is expected to run earlier).
+    const auto &Model = getAnalysis<LoadModelWrapperPass>().get().getReadOnlyModel();
+    auto Arch = Model->Architecture();
+    revng_check(Arch != model::Architecture::Invalid,
+                "Cannot determine QEMU architecture for helper inlining");
+
+    ArchName = model::Architecture::getQEMUName(Arch);
+
+    // Make it explicit for any subsequent transformations.
+    llvm::LLVMContext &Context = M.getContext();
+    auto *ArchMD = M.getOrInsertNamedMetadata(QemuArchitectureMD);
+    ArchMD->addOperand(MDNode::get(Context, MDString::get(Context, ArchName)));
   }
 
-  revng_assert(Strings.size() == 1,
-               "QEMU helpers of multiple architectures were linked inside the "
-               "module");
-
-  // Given the architecture MD, retrieve the correct libtcg module (if not
-  // already in the `HelpersModules` map) and link it into the main module
-  StringRef ArchName = Strings.begin()->first();
   if (HelpersModules.count(ArchName) == 0) {
     const std::string LibHelpersName = ("/share/revng/"
                                         "libtcg-helpers-to-inline-"
                                         + ArchName + ".bc")
                                          .str();
     auto OptionalHelpers = revng::ResourceFinder.findFile(LibHelpersName);
-    revng_assert(OptionalHelpers.has_value(), "Cannot find libtcg helpers");
+    revng_check(OptionalHelpers.has_value(),
+                ("Cannot find libtcg helpers: " + LibHelpersName).c_str());
     HelpersModules[ArchName] = parseIR(M.getContext(), OptionalHelpers.value());
   }
 

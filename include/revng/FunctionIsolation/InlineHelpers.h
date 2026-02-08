@@ -20,6 +20,8 @@ public:
 public:
   InlineHelpersPass() : ModulePass(ID) {}
 
+  void getAnalysisUsage(llvm::AnalysisUsage &AU) const override;
+
   bool runOnModule(llvm::Module &M) override;
 
 private:
