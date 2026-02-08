@@ -489,18 +489,25 @@ llvm::CallInst &emitMessageImpl(revng::IRBuilder &Builder,
 
   if constexpr (ShouldTerminateTheBlock) {
     // Add an unreachable mark after this call.
-    Instruction *T = Builder.CreateUnreachable();
-    T->setDebugLoc(DebugLocation);
+    //
+    // Some callers pass an insertion point that already has a terminator
+    // (e.g. they create an `unreachable` and then ask us to insert before it).
+    // In release builds, the old debug-only assert would be compiled out, and we
+    // would end up with multiple terminators in the same block, producing
+    // malformed IR that can't even round-trip through bitcode.
+    Instruction *NewTerminator = Builder.CreateUnreachable();
+    NewTerminator->setDebugLoc(DebugLocation);
 
-    // Assert there's one and only one terminator
+    // Ensure the block is well-formed by dropping any instruction that might
+    // still be left after the new terminator.
     auto *BB = Builder.GetInsertBlock();
-    unsigned Terminators = 0;
-    for (Instruction &I : *BB)
-      if (I.isTerminator())
-        ++Terminators;
-    revng_assert(Terminators == 1,
-                 "There's already a terminator in this basic block. "
-                 "Did you mean to use `emitMessage` instead?");
+    for (auto It = std::next(BasicBlock::iterator(NewTerminator));
+         It != BB->end();) {
+      Instruction &I = *It++;
+      if (not I.use_empty() and not I.getType()->isVoidTy())
+        I.replaceAllUsesWith(UndefValue::get(I.getType()));
+      I.eraseFromParent();
+    }
   }
 
   return *NewCall;
