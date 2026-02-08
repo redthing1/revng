@@ -4,6 +4,7 @@
 // This file is distributed under the MIT License. See LICENSE.md for details.
 //
 
+#include "llvm/Support/Error.h"
 #include "llvm/Support/SHA256.h"
 
 #include "revng/PipeboxCommon/Common.h"
@@ -129,6 +130,41 @@ public:
   llvm::StringRef getFilePath(size_t Index) const {
     revng_assert(Index < Files.size());
     return Files[Index].Contents.path();
+  }
+
+  llvm::Error addFileFromPath(llvm::StringRef Path) {
+    auto MaybeBuffer = llvm::MemoryBuffer::getFile(Path);
+    if (not MaybeBuffer)
+      return llvm::createStringError(MaybeBuffer.getError(),
+                                     "failed to read binary '%s'",
+                                     Path.str().c_str());
+
+    const llvm::MemoryBuffer &Buffer = **MaybeBuffer;
+    llvm::ArrayRef<char> Data(Buffer.getBufferStart(), Buffer.getBufferSize());
+    return addFileFromBuffer(Data);
+  }
+
+  llvm::Error addFileFromBuffer(llvm::ArrayRef<char> Data) {
+    std::string Hash = hash(Data);
+    for (const File &Existing : Files) {
+      if (Existing.Filename == Hash)
+        return llvm::Error::success();
+    }
+
+    auto TempFile = llvm::cantFail(TemporaryFile::make(Prefix));
+    writeToFile({ Data.data(), Data.size() }, TempFile.path());
+    // Set the file as read-only so that it cannot be (easily) changed.
+    llvm::sys::fs::setPermissions(TempFile.path(),
+                                  llvm::sys::fs::perms::owner_read);
+
+    auto Buffer = llvm::MemoryBuffer::getFile(TempFile.path());
+    if (not Buffer)
+      return llvm::createStringError(Buffer.getError(),
+                                     "failed to re-open temp file '%s'",
+                                     TempFile.path().str().c_str());
+
+    Files.push_back({ std::move(Hash), std::move(TempFile), std::move(*Buffer) });
+    return llvm::Error::success();
   }
 
 private:
