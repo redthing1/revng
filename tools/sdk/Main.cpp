@@ -33,10 +33,35 @@ static cl::opt<std::string> AnalysesDir("analyses-dir",
                                         cl::cat(SDKCategory));
 
 static cl::opt<std::string>
+  AnalysesList("analysis-list",
+               cl::desc("Analyses list to run before producing artifacts "
+                        "(default: revng-initial-auto-analysis)"),
+               cl::cat(SDKCategory));
+
+static cl::opt<bool>
+  NoInitialAnalyses("no-initial-analyses",
+                    cl::desc("Do not run the initial analyses list "
+                             "(useful with --execdir to resume)."),
+                    cl::init(false),
+                    cl::cat(SDKCategory));
+
+static cl::opt<std::string>
   Step("step",
        cl::desc("Pipeline step to run to produce the requested artifact "
                 "(default: emit-recompilable-archive)"),
        cl::cat(SDKCategory));
+
+static cl::opt<bool>
+  ListSteps("list-steps",
+            cl::desc("List pipeline steps and exit."),
+            cl::init(false),
+            cl::cat(SDKCategory));
+
+static cl::opt<bool>
+  ListAnalysesLists("list-analyses-lists",
+                    cl::desc("List available analyses lists and exit."),
+                    cl::init(false),
+                    cl::cat(SDKCategory));
 
 static cl::opt<std::string>
   AnalysisScope("analysis-scope",
@@ -68,7 +93,6 @@ static cl::list<std::string>
 
 static cl::opt<std::string> InputBinary(cl::Positional,
                                         cl::desc("<binary>"),
-                                        cl::Required,
                                         cl::cat(SDKCategory));
 
 static revng::OutputPathOpt Output("o",
@@ -77,13 +101,32 @@ static revng::OutputPathOpt Output("o",
 
 static llvm::ExitOnError AbortOnError;
 
+static void listPipeline(const revng::sdk::PipelineConfig &Config,
+                         bool PrintSteps,
+                         bool PrintAnalysesLists) {
+  auto MaybeManager = revng::sdk::createPipelineManager(Config);
+  if (not MaybeManager)
+    AbortOnError(MaybeManager.takeError());
+
+  revng::pipes::PipelineManager Manager = std::move(MaybeManager.get());
+  pipeline::Runner &Runner = Manager.getRunner();
+
+  if (PrintSteps) {
+    llvm::outs() << "Pipeline steps:\n";
+    for (const pipeline::Step &S : Runner)
+      llvm::outs() << "- " << S.getName() << "\n";
+  }
+
+  if (PrintAnalysesLists) {
+    llvm::outs() << "Analyses lists:\n";
+    for (size_t I = 0; I < Runner.getAnalysesListCount(); ++I)
+      llvm::outs() << "- " << Runner.getAnalysesList(I).getName() << "\n";
+  }
+}
+
 int main(int argc, char *argv[]) {
   // Show only SDK flags and the binary importer flags (e.g. --base, --debug-info).
   revng::InitRevng X(argc, argv, "", { &SDKCategory, &BinaryImporterCategory });
-
-  auto MaybeOutput = AbortOnError(Output.get());
-  if (not MaybeOutput.has_value())
-    AbortOnError(revng::createError("missing required -o <output-path>"));
 
   revng::sdk::PipelineConfig Config;
   if (not PipelinePath.empty())
@@ -91,11 +134,27 @@ int main(int argc, char *argv[]) {
   if (not AnalysesDir.empty())
     Config.AnalysesDir = AnalysesDir;
   Config.ResourceRoots.assign(ResourceRoots.begin(), ResourceRoots.end());
+  if (not AnalysesList.empty())
+    Config.InitialAnalysesList = AnalysesList;
+  if (NoInitialAnalyses)
+    Config.InitialAnalysesList = "";
   if (not Step.empty())
     Config.ArtifactStep = Step;
   if (not ExecDir.empty())
     Config.ExecutionDirectory = ExecDir;
   Config.FunctionEntries.assign(FunctionEntries.begin(), FunctionEntries.end());
+
+  if (ListSteps or ListAnalysesLists) {
+    listPipeline(Config, ListSteps, ListAnalysesLists);
+    return EXIT_SUCCESS;
+  }
+
+  if (InputBinary.empty())
+    AbortOnError(revng::createError("missing required <binary> argument"));
+
+  auto MaybeOutput = AbortOnError(Output.get());
+  if (not MaybeOutput.has_value())
+    AbortOnError(revng::createError("missing required -o <output-path>"));
 
   if (AnalysisScope == "selected") {
     Config.RestrictInitialAnalysesToSelectedFunctions = true;

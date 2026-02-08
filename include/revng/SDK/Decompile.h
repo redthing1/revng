@@ -36,6 +36,8 @@ struct PipelineConfig {
   std::string ExecutionDirectory;
 
   // Analyses list to run before producing artifacts.
+  // If empty, no analyses list is executed (useful when resuming from an
+  // execdir that already contains the needed state).
   std::string InitialAnalysesList = "revng-initial-auto-analysis";
 
   // When FunctionEntries is non-empty, the default behavior is to run the

@@ -472,11 +472,13 @@ llvm::Error produceArtifact(llvm::StringRef InputBinaryPath,
   if (llvm::Error Error = InputContainer.load(InputFilePath))
     return Error;
 
-  if (llvm::Error Error = runAnalysesList(Manager,
-                                          Config.InitialAnalysesList,
-                                          Config.FunctionEntries,
-                                          Config.RestrictInitialAnalysesToSelectedFunctions))
-    return Error;
+  if (not Config.InitialAnalysesList.empty()) {
+    if (llvm::Error Error = runAnalysesList(Manager,
+                                            Config.InitialAnalysesList,
+                                            Config.FunctionEntries,
+                                            Config.RestrictInitialAnalysesToSelectedFunctions))
+      return Error;
+  }
 
   llvm::Error Result = llvm::Error::success();
   if (Config.ArtifactStep == "emit-recompilable-archive"
