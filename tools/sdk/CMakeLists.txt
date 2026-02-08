@@ -4,10 +4,10 @@
 
 revng_add_executable(sdk-decompile Main.cpp)
 
-# Link the binary importer library so its command-line options (e.g. --base,
-# --debug-info) are registered before InitRevng parses argv. The analysis itself
-# is still loaded via plugins at runtime.
-target_link_libraries(sdk-decompile revngSDK revngModelImporterBinary)
+# Link the binary importer CLI options so flags like --base/--debug-info are
+# registered before InitRevng parses argv. The analysis itself is still loaded
+# via plugins at runtime.
+target_link_libraries(sdk-decompile revngSDK revngModelBinaryImporterCLI)
 
 # `sdk-decompile` loads analysis plugins from disk (dlopen) and the default
 # pipelines.yml/analyses list expects them to be present under lib/revng/analyses.
@@ -27,3 +27,19 @@ target_link_libraries(sdk-cfg revngSDKDirect)
 
 revng_add_executable(sdk-isolate Isolate.cpp)
 target_link_libraries(sdk-isolate revngSDKDirect)
+
+if(REVNG_BUILD_TESTS)
+  revng_add_test(
+    NAME
+    sdk-cli-smoke
+    COMMAND
+    "${CMAKE_SOURCE_DIR}/tests/sdk/sdk_cli_smoke.sh"
+    "$<TARGET_FILE:sdk-import>"
+    "$<TARGET_FILE:sdk-lift>"
+    "$<TARGET_FILE:sdk-cfg>"
+    "$<TARGET_FILE:sdk-isolate>"
+    "$<TARGET_FILE:sdk-decompile>"
+    "$<TARGET_FILE:sdk_cli_fixture>"
+    "${CMAKE_CURRENT_BINARY_DIR}/sdk-cli-smoke-out")
+  set_tests_properties(sdk-cli-smoke PROPERTIES LABELS "sdk")
+endif()

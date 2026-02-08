@@ -5,4 +5,5 @@
 add_subdirectory(abi)
 add_subdirectory(pipeline)
 add_subdirectory(pypeline)
+add_subdirectory(sdk)
 add_subdirectory(unit)
